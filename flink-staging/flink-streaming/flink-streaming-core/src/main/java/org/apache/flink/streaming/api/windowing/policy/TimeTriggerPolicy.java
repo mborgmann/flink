@@ -41,8 +41,8 @@ public class TimeTriggerPolicy<DATA> implements ActiveTriggerPolicy<DATA>,
 	private static final long serialVersionUID = -5122753802440196719L;
 
 	protected long startTime;
-	protected long granularity;
-	protected TimestampWrapper<DATA> timestampWrapper;
+	public long granularity;
+	public TimestampWrapper<DATA> timestampWrapper;
 	protected long delay;
 
 	/**
@@ -141,13 +141,17 @@ public class TimeTriggerPolicy<DATA> implements ActiveTriggerPolicy<DATA>,
 	 * @param callback
 	 *            The callback object.
 	 */
-	private synchronized void activeFakeElementEmission(ActiveTriggerCallback callback) {
+	public synchronized Object activeFakeElementEmission(ActiveTriggerCallback callback) {
 
 		// start time is excluded, but end time is included: >=
 		if (System.currentTimeMillis() >= startTime + granularity) {
 			startTime += granularity;
-			callback.sendFakeElement(startTime - 1);
+			if (callback != null) {
+				callback.sendFakeElement(startTime - 1);
+			}
+			return startTime - 1;
 		}
+		return null;
 
 	}
 
@@ -191,6 +195,28 @@ public class TimeTriggerPolicy<DATA> implements ActiveTriggerPolicy<DATA>,
 	@Override
 	public TimeTriggerPolicy<DATA> clone() {
 		return new TimeTriggerPolicy<DATA>(granularity, timestampWrapper, delay);
+	}
+
+	@Override
+	public boolean equals(Object other) {
+		if (other == null || !(other instanceof TimeTriggerPolicy)) {
+			return false;
+		} else {
+			try {
+				@SuppressWarnings("unchecked")
+				TimeTriggerPolicy<DATA> otherPolicy = (TimeTriggerPolicy<DATA>) other;
+				return startTime == otherPolicy.startTime && granularity == otherPolicy.granularity
+						&& timestampWrapper.equals(otherPolicy.timestampWrapper);
+			} catch (ClassCastException e) {
+				return false;
+			}
+		}
+	}
+
+	@Override
+	public String toString() {
+		return "TimePolicy(" + granularity + ", " + timestampWrapper.getClass().getSimpleName()
+				+ ")";
 	}
 
 }

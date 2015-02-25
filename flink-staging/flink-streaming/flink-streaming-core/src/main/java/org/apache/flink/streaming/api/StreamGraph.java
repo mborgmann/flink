@@ -23,10 +23,12 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
 import org.apache.flink.api.common.ExecutionConfig;
@@ -63,30 +65,31 @@ public class StreamGraph extends StreamingPlan {
 	private String jobName = DEAFULT_JOB_NAME;
 
 	// Graph attributes
-	private Map<String, Integer> operatorParallelisms;
-	private Map<String, Long> bufferTimeouts;
-	private Map<String, List<String>> outEdgeLists;
-	private Map<String, List<Integer>> outEdgeTypes;
-	private Map<String, List<List<String>>> selectedNames;
-	private Map<String, List<String>> inEdgeLists;
-	private Map<String, List<StreamPartitioner<?>>> outputPartitioners;
-	private Map<String, String> operatorNames;
-	private Map<String, StreamInvokable<?, ?>> invokableObjects;
-	private Map<String, StreamRecordSerializer<?>> typeSerializersIn1;
-	private Map<String, StreamRecordSerializer<?>> typeSerializersIn2;
-	private Map<String, StreamRecordSerializer<?>> typeSerializersOut1;
-	private Map<String, StreamRecordSerializer<?>> typeSerializersOut2;
-	private Map<String, Class<? extends AbstractInvokable>> jobVertexClasses;
-	private Map<String, List<OutputSelector<?>>> outputSelectors;
-	private Map<String, Integer> iterationIds;
-	private Map<Integer, String> iterationIDtoHeadName;
-	private Map<Integer, String> iterationIDtoTailName;
-	private Map<String, Integer> iterationTailCount;
-	private Map<String, Long> iterationTimeouts;
-	private Map<String, Map<String, OperatorState<?>>> operatorStates;
-	private Map<String, InputFormat<String, ?>> inputFormatLists;
+	private Map<Integer, Integer> operatorParallelisms;
+	private Map<Integer, Long> bufferTimeouts;
+	private Map<Integer, List<Integer>> outEdgeLists;
+	private Map<Integer, List<Integer>> outEdgeTypes;
+	private Map<Integer, List<List<String>>> selectedNames;
+	private Map<Integer, List<Integer>> inEdgeLists;
+	private Map<Integer, List<StreamPartitioner<?>>> outputPartitioners;
+	private Map<Integer, String> operatorNames;
+	private Map<Integer, StreamInvokable<?, ?>> invokableObjects;
+	private Map<Integer, StreamRecordSerializer<?>> typeSerializersIn1;
+	private Map<Integer, StreamRecordSerializer<?>> typeSerializersIn2;
+	private Map<Integer, StreamRecordSerializer<?>> typeSerializersOut1;
+	private Map<Integer, StreamRecordSerializer<?>> typeSerializersOut2;
+	private Map<Integer, Class<? extends AbstractInvokable>> jobVertexClasses;
+	private Map<Integer, List<OutputSelector<?>>> outputSelectors;
+	private Map<Integer, Integer> iterationIds;
+	private Map<Integer, Integer> iterationIDtoHeadID;
+	private Map<Integer, Integer> iterationIDtoTailID;
+	private Map<Integer, Integer> iterationTailCount;
+	private Map<Integer, Long> iterationTimeouts;
+	private Map<Integer, Map<String, OperatorState<?>>> operatorStates;
+	private Map<Integer, InputFormat<String, ?>> inputFormatLists;
+	private List<Map<Integer, ?>> containingMaps;
 
-	private Set<String> sources;
+	private Set<Integer> sources;
 
 	private ExecutionConfig executionConfig;
 
@@ -102,36 +105,58 @@ public class StreamGraph extends StreamingPlan {
 	}
 
 	public void initGraph() {
-		operatorParallelisms = new HashMap<String, Integer>();
-		bufferTimeouts = new HashMap<String, Long>();
-		outEdgeLists = new HashMap<String, List<String>>();
-		outEdgeTypes = new HashMap<String, List<Integer>>();
-		selectedNames = new HashMap<String, List<List<String>>>();
-		inEdgeLists = new HashMap<String, List<String>>();
-		outputPartitioners = new HashMap<String, List<StreamPartitioner<?>>>();
-		operatorNames = new HashMap<String, String>();
-		invokableObjects = new HashMap<String, StreamInvokable<?, ?>>();
-		typeSerializersIn1 = new HashMap<String, StreamRecordSerializer<?>>();
-		typeSerializersIn2 = new HashMap<String, StreamRecordSerializer<?>>();
-		typeSerializersOut1 = new HashMap<String, StreamRecordSerializer<?>>();
-		typeSerializersOut2 = new HashMap<String, StreamRecordSerializer<?>>();
-		outputSelectors = new HashMap<String, List<OutputSelector<?>>>();
-		jobVertexClasses = new HashMap<String, Class<? extends AbstractInvokable>>();
-		iterationIds = new HashMap<String, Integer>();
-		iterationIDtoHeadName = new HashMap<Integer, String>();
-		iterationIDtoTailName = new HashMap<Integer, String>();
-		iterationTailCount = new HashMap<String, Integer>();
-		iterationTimeouts = new HashMap<String, Long>();
-		operatorStates = new HashMap<String, Map<String, OperatorState<?>>>();
-		inputFormatLists = new HashMap<String, InputFormat<String, ?>>();
-		sources = new HashSet<String>();
+		containingMaps = new ArrayList<Map<Integer, ?>>();
+
+		operatorParallelisms = new HashMap<Integer, Integer>();
+		containingMaps.add(operatorParallelisms);
+		bufferTimeouts = new HashMap<Integer, Long>();
+		containingMaps.add(bufferTimeouts);
+		outEdgeLists = new HashMap<Integer, List<Integer>>();
+		containingMaps.add(outEdgeLists);
+		outEdgeTypes = new HashMap<Integer, List<Integer>>();
+		containingMaps.add(outEdgeTypes);
+		selectedNames = new HashMap<Integer, List<List<String>>>();
+		containingMaps.add(selectedNames);
+		inEdgeLists = new HashMap<Integer, List<Integer>>();
+		containingMaps.add(inEdgeLists);
+		outputPartitioners = new HashMap<Integer, List<StreamPartitioner<?>>>();
+		containingMaps.add(outputPartitioners);
+		operatorNames = new HashMap<Integer, String>();
+		containingMaps.add(operatorNames);
+		invokableObjects = new HashMap<Integer, StreamInvokable<?, ?>>();
+		containingMaps.add(invokableObjects);
+		typeSerializersIn1 = new HashMap<Integer, StreamRecordSerializer<?>>();
+		containingMaps.add(typeSerializersIn1);
+		typeSerializersIn2 = new HashMap<Integer, StreamRecordSerializer<?>>();
+		containingMaps.add(typeSerializersIn2);
+		typeSerializersOut1 = new HashMap<Integer, StreamRecordSerializer<?>>();
+		containingMaps.add(typeSerializersOut1);
+		typeSerializersOut2 = new HashMap<Integer, StreamRecordSerializer<?>>();
+		containingMaps.add(typeSerializersOut1);
+		outputSelectors = new HashMap<Integer, List<OutputSelector<?>>>();
+		containingMaps.add(outputSelectors);
+		jobVertexClasses = new HashMap<Integer, Class<? extends AbstractInvokable>>();
+		containingMaps.add(jobVertexClasses);
+		iterationIds = new HashMap<Integer, Integer>();
+		containingMaps.add(jobVertexClasses);
+		iterationIDtoHeadID = new HashMap<Integer, Integer>();
+		iterationIDtoTailID = new HashMap<Integer, Integer>();
+		iterationTailCount = new HashMap<Integer, Integer>();
+		containingMaps.add(iterationTailCount);
+		iterationTimeouts = new HashMap<Integer, Long>();
+		containingMaps.add(iterationTailCount);
+		operatorStates = new HashMap<Integer, Map<String, OperatorState<?>>>();
+		containingMaps.add(operatorStates);
+		inputFormatLists = new HashMap<Integer, InputFormat<String, ?>>();
+		containingMaps.add(operatorStates);
+		sources = new HashSet<Integer>();
 	}
 
 	/**
 	 * Adds a vertex to the streaming graph with the given parameters
 	 * 
-	 * @param vertexName
-	 *            Name of the vertex
+	 * @param vertexID
+	 *            ID of the vertex
 	 * @param invokableObject
 	 *            User defined operator
 	 * @param inTypeInfo
@@ -143,38 +168,38 @@ public class StreamGraph extends StreamingPlan {
 	 * @param parallelism
 	 *            Number of parallel instances created
 	 */
-	public <IN, OUT> void addStreamVertex(String vertexName,
+	public <IN, OUT> void addStreamVertex(Integer vertexID,
 			StreamInvokable<IN, OUT> invokableObject, TypeInformation<IN> inTypeInfo,
 			TypeInformation<OUT> outTypeInfo, String operatorName, int parallelism) {
 
-		addVertex(vertexName, StreamVertex.class, invokableObject, operatorName, parallelism);
+		addVertex(vertexID, StreamVertex.class, invokableObject, operatorName, parallelism);
 
 		StreamRecordSerializer<IN> inSerializer = inTypeInfo != null ? new StreamRecordSerializer<IN>(
 				inTypeInfo, executionConfig) : null;
 		StreamRecordSerializer<OUT> outSerializer = outTypeInfo != null ? new StreamRecordSerializer<OUT>(
 				outTypeInfo, executionConfig) : null;
 
-		addTypeSerializers(vertexName, inSerializer, null, outSerializer, null);
+		addTypeSerializers(vertexID, inSerializer, null, outSerializer, null);
 
 		if (LOG.isDebugEnabled()) {
-			LOG.debug("Vertex: {}", vertexName);
+			LOG.debug("Vertex: {}", vertexID);
 		}
 	}
 
-	public <IN, OUT> void addSourceVertex(String vertexName,
+	public <IN, OUT> void addSourceVertex(Integer vertexID,
 			StreamInvokable<IN, OUT> invokableObject, TypeInformation<IN> inTypeInfo,
 			TypeInformation<OUT> outTypeInfo, String operatorName, int parallelism) {
-		addStreamVertex(vertexName, invokableObject, inTypeInfo, outTypeInfo, operatorName,
+		addStreamVertex(vertexID, invokableObject, inTypeInfo, outTypeInfo, operatorName,
 				parallelism);
-		sources.add(vertexName);
+		sources.add(vertexID);
 	}
 
 	/**
 	 * Adds a vertex for the iteration head to the {@link JobGraph}. The
 	 * iterated values will be fed from this vertex back to the graph.
 	 * 
-	 * @param vertexName
-	 *            Name of the vertex
+	 * @param vertexID
+	 *            ID of the vertex
 	 * @param iterationHead
 	 *            Id of the iteration head
 	 * @param iterationID
@@ -184,29 +209,29 @@ public class StreamGraph extends StreamingPlan {
 	 * @param waitTime
 	 *            Max wait time for next record
 	 */
-	public void addIterationHead(String vertexName, String iterationHead, Integer iterationID,
+	public void addIterationHead(Integer vertexID, Integer iterationHead, Integer iterationID,
 			int parallelism, long waitTime) {
 
-		addVertex(vertexName, StreamIterationHead.class, null, null, parallelism);
+		addVertex(vertexID, StreamIterationHead.class, null, null, parallelism);
 
 		chaining = false;
 
-		iterationIds.put(vertexName, iterationID);
-		iterationIDtoHeadName.put(iterationID, vertexName);
+		iterationIds.put(vertexID, iterationID);
+		iterationIDtoHeadID.put(iterationID, vertexID);
 
-		setSerializersFrom(iterationHead, vertexName);
+		setSerializersFrom(iterationHead, vertexID);
 
-		setEdge(vertexName, iterationHead,
+		setEdge(vertexID, iterationHead,
 				outputPartitioners.get(inEdgeLists.get(iterationHead).get(0)).get(0), 0,
 				new ArrayList<String>());
 
-		iterationTimeouts.put(iterationIDtoHeadName.get(iterationID), waitTime);
+		iterationTimeouts.put(iterationIDtoHeadID.get(iterationID), waitTime);
 
 		if (LOG.isDebugEnabled()) {
-			LOG.debug("ITERATION SOURCE: {}", vertexName);
+			LOG.debug("ITERATION SOURCE: {}", vertexID);
 		}
 
-		sources.add(vertexName);
+		sources.add(vertexID);
 	}
 
 	/**
@@ -214,8 +239,8 @@ public class StreamGraph extends StreamingPlan {
 	 * intended to be iterated will be sent to this sink from the iteration
 	 * head.
 	 * 
-	 * @param vertexName
-	 *            Name of the vertex
+	 * @param vertexID
+	 *            ID of the vertex
 	 * @param iterationTail
 	 *            Id of the iteration tail
 	 * @param iterationID
@@ -225,50 +250,50 @@ public class StreamGraph extends StreamingPlan {
 	 * @param waitTime
 	 *            Max waiting time for next record
 	 */
-	public void addIterationTail(String vertexName, String iterationTail, Integer iterationID,
+	public void addIterationTail(Integer vertexID, Integer iterationTail, Integer iterationID,
 			long waitTime) {
 
 		if (bufferTimeouts.get(iterationTail) == 0) {
 			throw new RuntimeException("Buffer timeout 0 at iteration tail is not supported.");
 		}
 
-		addVertex(vertexName, StreamIterationTail.class, null, null, getParallelism(iterationTail));
+		addVertex(vertexID, StreamIterationTail.class, null, null, getParallelism(iterationTail));
 
-		iterationIds.put(vertexName, iterationID);
-		iterationIDtoTailName.put(iterationID, vertexName);
+		iterationIds.put(vertexID, iterationID);
+		iterationIDtoTailID.put(iterationID, vertexID);
 
-		setSerializersFrom(iterationTail, vertexName);
-		iterationTimeouts.put(iterationIDtoTailName.get(iterationID), waitTime);
+		setSerializersFrom(iterationTail, vertexID);
+		iterationTimeouts.put(iterationIDtoTailID.get(iterationID), waitTime);
 
-		setParallelism(iterationIDtoHeadName.get(iterationID), getParallelism(iterationTail));
-		setBufferTimeout(iterationIDtoHeadName.get(iterationID), bufferTimeouts.get(iterationTail));
+		setParallelism(iterationIDtoHeadID.get(iterationID), getParallelism(iterationTail));
+		setBufferTimeout(iterationIDtoHeadID.get(iterationID), bufferTimeouts.get(iterationTail));
 
 		if (LOG.isDebugEnabled()) {
-			LOG.debug("ITERATION SINK: {}", vertexName);
+			LOG.debug("ITERATION SINK: {}", vertexID);
 		}
 
 	}
 
-	public <IN1, IN2, OUT> void addCoTask(String vertexName,
+	public <IN1, IN2, OUT> void addCoTask(Integer vertexID,
 			CoInvokable<IN1, IN2, OUT> taskInvokableObject, TypeInformation<IN1> in1TypeInfo,
 			TypeInformation<IN2> in2TypeInfo, TypeInformation<OUT> outTypeInfo,
 			String operatorName, int parallelism) {
 
-		addVertex(vertexName, CoStreamVertex.class, taskInvokableObject, operatorName, parallelism);
+		addVertex(vertexID, CoStreamVertex.class, taskInvokableObject, operatorName, parallelism);
 
-		addTypeSerializers(vertexName, new StreamRecordSerializer<IN1>(in1TypeInfo, executionConfig),
-				new StreamRecordSerializer<IN2>(in2TypeInfo, executionConfig), new StreamRecordSerializer<OUT>(
-						outTypeInfo, executionConfig), null);
+		addTypeSerializers(vertexID, new StreamRecordSerializer<IN1>(in1TypeInfo, executionConfig),
+				new StreamRecordSerializer<IN2>(in2TypeInfo, executionConfig),
+				new StreamRecordSerializer<OUT>(outTypeInfo, executionConfig), null);
 
 		if (LOG.isDebugEnabled()) {
-			LOG.debug("CO-TASK: {}", vertexName);
+			LOG.debug("CO-TASK: {}", vertexID);
 		}
 	}
 
 	/**
 	 * Sets vertex parameters in the JobGraph
 	 * 
-	 * @param vertexName
+	 * @param vertexID
 	 *            Name of the vertex
 	 * @param vertexClass
 	 *            The class of the vertex
@@ -279,30 +304,30 @@ public class StreamGraph extends StreamingPlan {
 	 * @param parallelism
 	 *            Number of parallel instances created
 	 */
-	private void addVertex(String vertexName, Class<? extends AbstractInvokable> vertexClass,
+	private void addVertex(Integer vertexID, Class<? extends AbstractInvokable> vertexClass,
 			StreamInvokable<?, ?> invokableObject, String operatorName, int parallelism) {
 
-		jobVertexClasses.put(vertexName, vertexClass);
-		setParallelism(vertexName, parallelism);
-		invokableObjects.put(vertexName, invokableObject);
-		operatorNames.put(vertexName, operatorName);
-		outEdgeLists.put(vertexName, new ArrayList<String>());
-		outEdgeTypes.put(vertexName, new ArrayList<Integer>());
-		selectedNames.put(vertexName, new ArrayList<List<String>>());
-		outputSelectors.put(vertexName, new ArrayList<OutputSelector<?>>());
-		inEdgeLists.put(vertexName, new ArrayList<String>());
-		outputPartitioners.put(vertexName, new ArrayList<StreamPartitioner<?>>());
-		iterationTailCount.put(vertexName, 0);
+		jobVertexClasses.put(vertexID, vertexClass);
+		setParallelism(vertexID, parallelism);
+		invokableObjects.put(vertexID, invokableObject);
+		operatorNames.put(vertexID, operatorName);
+		outEdgeLists.put(vertexID, new ArrayList<Integer>());
+		outEdgeTypes.put(vertexID, new ArrayList<Integer>());
+		selectedNames.put(vertexID, new ArrayList<List<String>>());
+		outputSelectors.put(vertexID, new ArrayList<OutputSelector<?>>());
+		inEdgeLists.put(vertexID, new ArrayList<Integer>());
+		outputPartitioners.put(vertexID, new ArrayList<StreamPartitioner<?>>());
+		iterationTailCount.put(vertexID, 0);
 	}
 
 	/**
 	 * Connects two vertices in the JobGraph using the selected partitioner
 	 * settings
 	 * 
-	 * @param upStreamVertexName
-	 *            Name of the upstream(output) vertex
-	 * @param downStreamVertexName
-	 *            Name of the downstream(input) vertex
+	 * @param upStreamVertexID
+	 *            ID of the upstream(output) vertex
+	 * @param downStreamVertexID
+	 *            ID of the downstream(input) vertex
 	 * @param partitionerObject
 	 *            Partitioner object
 	 * @param typeNumber
@@ -310,62 +335,91 @@ public class StreamGraph extends StreamingPlan {
 	 * @param outputNames
 	 *            User defined names of the out edge
 	 */
-	public void setEdge(String upStreamVertexName, String downStreamVertexName,
+	public void setEdge(Integer upStreamVertexID, Integer downStreamVertexID,
 			StreamPartitioner<?> partitionerObject, int typeNumber, List<String> outputNames) {
-		outEdgeLists.get(upStreamVertexName).add(downStreamVertexName);
-		outEdgeTypes.get(upStreamVertexName).add(typeNumber);
-		inEdgeLists.get(downStreamVertexName).add(upStreamVertexName);
-		outputPartitioners.get(upStreamVertexName).add(partitionerObject);
-		selectedNames.get(upStreamVertexName).add(outputNames);
+		outEdgeLists.get(upStreamVertexID).add(downStreamVertexID);
+		outEdgeTypes.get(upStreamVertexID).add(typeNumber);
+		inEdgeLists.get(downStreamVertexID).add(upStreamVertexID);
+		outputPartitioners.get(upStreamVertexID).add(partitionerObject);
+		selectedNames.get(upStreamVertexID).add(outputNames);
 	}
 
-	private void addTypeSerializers(String vertexName, StreamRecordSerializer<?> in1,
+	public void removeEdge(Integer upStream, Integer downStream) {
+		int inputIndex = getInEdges(downStream).indexOf(upStream);
+		inEdgeLists.get(downStream).remove(inputIndex);
+
+		int outputIndex = getOutEdges(upStream).indexOf(downStream);
+		outEdgeLists.get(upStream).remove(outputIndex);
+		outEdgeTypes.get(upStream).remove(outputIndex);
+		selectedNames.get(upStream).remove(outputIndex);
+		outputPartitioners.get(upStream).remove(outputIndex);
+	}
+
+	public void removeVertex(Integer toRemove) {
+		List<Integer> outEdges = new ArrayList<Integer>(getOutEdges(toRemove));
+		List<Integer> inEdges = new ArrayList<Integer>(getInEdges(toRemove));
+
+		for (Integer output : outEdges) {
+			removeEdge(toRemove, output);
+		}
+
+		for (Integer input : inEdges) {
+			removeEdge(input, toRemove);
+		}
+
+		for (Map<Integer, ?> map : containingMaps) {
+			map.remove(toRemove);
+		}
+
+	}
+
+	private void addTypeSerializers(Integer vertexID, StreamRecordSerializer<?> in1,
 			StreamRecordSerializer<?> in2, StreamRecordSerializer<?> out1,
 			StreamRecordSerializer<?> out2) {
-		typeSerializersIn1.put(vertexName, in1);
-		typeSerializersIn2.put(vertexName, in2);
-		typeSerializersOut1.put(vertexName, out1);
-		typeSerializersOut2.put(vertexName, out2);
+		typeSerializersIn1.put(vertexID, in1);
+		typeSerializersIn2.put(vertexID, in2);
+		typeSerializersOut1.put(vertexID, out1);
+		typeSerializersOut2.put(vertexID, out2);
 	}
 
 	/**
 	 * Sets the number of parallel instances created for the given vertex.
 	 * 
-	 * @param vertexName
-	 *            Name of the vertex
+	 * @param vertexID
+	 *            ID of the vertex
 	 * @param parallelism
 	 *            Number of parallel instances created
 	 */
-	public void setParallelism(String vertexName, int parallelism) {
-		operatorParallelisms.put(vertexName, parallelism);
+	public void setParallelism(Integer vertexID, int parallelism) {
+		operatorParallelisms.put(vertexID, parallelism);
 	}
 
-	public int getParallelism(String vertexName) {
-		return operatorParallelisms.get(vertexName);
+	public int getParallelism(Integer vertexID) {
+		return operatorParallelisms.get(vertexID);
 	}
 
 	/**
 	 * Sets the input format for the given vertex.
 	 * 
-	 * @param vertexName
+	 * @param vertexID
 	 *            Name of the vertex
 	 * @param inputFormat
 	 *            input format of the file source associated with the given
 	 *            vertex
 	 */
-	public void setInputFormat(String vertexName, InputFormat<String, ?> inputFormat) {
-		inputFormatLists.put(vertexName, inputFormat);
+	public void setInputFormat(Integer vertexID, InputFormat<String, ?> inputFormat) {
+		inputFormatLists.put(vertexID, inputFormat);
 	}
 
-	public void setBufferTimeout(String vertexName, long bufferTimeout) {
-		this.bufferTimeouts.put(vertexName, bufferTimeout);
+	public void setBufferTimeout(Integer vertexID, long bufferTimeout) {
+		this.bufferTimeouts.put(vertexID, bufferTimeout);
 	}
 
-	public long getBufferTimeout(String vertexName) {
-		return this.bufferTimeouts.get(vertexName);
+	public long getBufferTimeout(Integer vertexID) {
+		return this.bufferTimeouts.get(vertexID);
 	}
 
-	public void addOperatorState(String veretxName, String stateName, OperatorState<?> state) {
+	public void addOperatorState(Integer veretxName, String stateName, OperatorState<?> state) {
 		Map<String, OperatorState<?>> states = operatorStates.get(veretxName);
 		if (states == null) {
 			states = new HashMap<String, OperatorState<?>>();
@@ -385,51 +439,52 @@ public class StreamGraph extends StreamingPlan {
 	 * Sets a user defined {@link OutputSelector} for the given operator. Used
 	 * for directed emits.
 	 * 
-	 * @param vertexName
+	 * @param vertexID
 	 *            Name of the vertex for which the output selector will be set
 	 * @param outputSelector
 	 *            The user defined output selector.
 	 */
-	public <T> void setOutputSelector(String vertexName, OutputSelector<T> outputSelector) {
-		outputSelectors.get(vertexName).add(outputSelector);
+	public <T> void setOutputSelector(Integer vertexID, OutputSelector<T> outputSelector) {
+		outputSelectors.get(vertexID).add(outputSelector);
 
 		if (LOG.isDebugEnabled()) {
-			LOG.debug("Outputselector set for {}", vertexName);
+			LOG.debug("Outputselector set for {}", vertexID);
 		}
 
 	}
 
-	public <IN, OUT> void setInvokable(String vertexName, StreamInvokable<IN, OUT> invokableObject) {
-		invokableObjects.put(vertexName, invokableObject);
+	public <IN, OUT> void setInvokable(Integer vertexID, StreamInvokable<IN, OUT> invokableObject) {
+		invokableObjects.put(vertexID, invokableObject);
 	}
 
-	public <OUT> void setOutType(String id, TypeInformation<OUT> outType) {
-		StreamRecordSerializer<OUT> serializer = new StreamRecordSerializer<OUT>(outType, executionConfig);
+	public <OUT> void setOutType(Integer id, TypeInformation<OUT> outType) {
+		StreamRecordSerializer<OUT> serializer = new StreamRecordSerializer<OUT>(outType,
+				executionConfig);
 		typeSerializersOut1.put(id, serializer);
 	}
 
-	public StreamInvokable<?, ?> getInvokable(String vertexName) {
-		return invokableObjects.get(vertexName);
+	public StreamInvokable<?, ?> getInvokable(Integer vertexID) {
+		return invokableObjects.get(vertexID);
 	}
 
 	@SuppressWarnings("unchecked")
-	public <OUT> StreamRecordSerializer<OUT> getOutSerializer1(String vertexName) {
-		return (StreamRecordSerializer<OUT>) typeSerializersOut1.get(vertexName);
+	public <OUT> StreamRecordSerializer<OUT> getOutSerializer1(Integer vertexID) {
+		return (StreamRecordSerializer<OUT>) typeSerializersOut1.get(vertexID);
 	}
 
 	@SuppressWarnings("unchecked")
-	public <OUT> StreamRecordSerializer<OUT> getOutSerializer2(String vertexName) {
-		return (StreamRecordSerializer<OUT>) typeSerializersOut2.get(vertexName);
+	public <OUT> StreamRecordSerializer<OUT> getOutSerializer2(Integer vertexID) {
+		return (StreamRecordSerializer<OUT>) typeSerializersOut2.get(vertexID);
 	}
 
 	@SuppressWarnings("unchecked")
-	public <IN> StreamRecordSerializer<IN> getInSerializer1(String vertexName) {
-		return (StreamRecordSerializer<IN>) typeSerializersIn1.get(vertexName);
+	public <IN> StreamRecordSerializer<IN> getInSerializer1(Integer vertexID) {
+		return (StreamRecordSerializer<IN>) typeSerializersIn1.get(vertexID);
 	}
 
 	@SuppressWarnings("unchecked")
-	public <IN> StreamRecordSerializer<IN> getInSerializer2(String vertexName) {
-		return (StreamRecordSerializer<IN>) typeSerializersIn2.get(vertexName);
+	public <IN> StreamRecordSerializer<IN> getInSerializer2(Integer vertexID) {
+		return (StreamRecordSerializer<IN>) typeSerializersIn2.get(vertexID);
 	}
 
 	/**
@@ -441,7 +496,7 @@ public class StreamGraph extends StreamingPlan {
 	 * @param to
 	 *            to
 	 */
-	public void setSerializersFrom(String from, String to) {
+	public void setSerializersFrom(Integer from, Integer to) {
 		operatorNames.put(to, operatorNames.get(from));
 
 		typeSerializersIn1.put(to, typeSerializersOut1.get(from));
@@ -467,9 +522,12 @@ public class StreamGraph extends StreamingPlan {
 	public JobGraph getJobGraph(String jobGraphName) {
 
 		this.jobName = jobGraphName;
-		StreamingJobGraphGenerator optimizer = new StreamingJobGraphGenerator(this);
 
-		return optimizer.createJobGraph(jobGraphName);
+		WindowingOptimzier.optimizeGraph(this);
+
+		StreamingJobGraphGenerator jobgraphGenerator = new StreamingJobGraphGenerator(this);
+
+		return jobgraphGenerator.createJobGraph(jobGraphName);
 	}
 
 	public void setJobName(String jobName) {
@@ -480,29 +538,33 @@ public class StreamGraph extends StreamingPlan {
 		this.chaining = chaining;
 	}
 
-	public Collection<String> getSources() {
+	public Set<Entry<Integer, StreamInvokable<?, ?>>> getInvokables() {
+		return invokableObjects.entrySet();
+	}
+
+	public Collection<Integer> getSources() {
 		return sources;
 	}
 
-	public List<String> getOutEdges(String vertexName) {
-		return outEdgeLists.get(vertexName);
+	public List<Integer> getOutEdges(Integer vertexID) {
+		return outEdgeLists.get(vertexID);
 	}
 
-	public List<String> getInEdges(String vertexName) {
-		return inEdgeLists.get(vertexName);
+	public List<Integer> getInEdges(Integer vertexID) {
+		return inEdgeLists.get(vertexID);
 	}
 
-	public List<Integer> getOutEdgeTypes(String vertexName) {
+	public List<Integer> getOutEdgeTypes(Integer vertexID) {
 
-		return outEdgeTypes.get(vertexName);
+		return outEdgeTypes.get(vertexID);
 	}
 
-	public StreamPartitioner<?> getOutPartitioner(String upStreamVertex, String downStreamVertex) {
+	public StreamPartitioner<?> getOutPartitioner(Integer upStreamVertex, Integer downStreamVertex) {
 		return outputPartitioners.get(upStreamVertex).get(
 				outEdgeLists.get(upStreamVertex).indexOf(downStreamVertex));
 	}
 
-	public List<String> getSelectedNames(String upStreamVertex, String downStreamVertex) {
+	public List<String> getSelectedNames(Integer upStreamVertex, Integer downStreamVertex) {
 
 		return selectedNames.get(upStreamVertex).get(
 				outEdgeLists.get(upStreamVertex).indexOf(downStreamVertex));
@@ -512,56 +574,60 @@ public class StreamGraph extends StreamingPlan {
 		return new HashSet<Integer>(iterationIds.values());
 	}
 
-	public String getIterationTail(int iterID) {
-		return iterationIDtoTailName.get(iterID);
+	public Integer getIterationTail(int iterID) {
+		return iterationIDtoTailID.get(iterID);
 	}
 
-	public String getIterationHead(int iterID) {
-		return iterationIDtoHeadName.get(iterID);
+	public Integer getIterationHead(int iterID) {
+		return iterationIDtoHeadID.get(iterID);
 	}
 
-	public Class<? extends AbstractInvokable> getJobVertexClass(String vertexName) {
-		return jobVertexClasses.get(vertexName);
+	public Class<? extends AbstractInvokable> getJobVertexClass(Integer vertexID) {
+		return jobVertexClasses.get(vertexID);
 	}
 
-	public InputFormat<String, ?> getInputFormat(String vertexName) {
-		return inputFormatLists.get(vertexName);
+	public InputFormat<String, ?> getInputFormat(Integer vertexID) {
+		return inputFormatLists.get(vertexID);
 	}
 
-	public List<OutputSelector<?>> getOutputSelector(String vertexName) {
-		return outputSelectors.get(vertexName);
+	public List<OutputSelector<?>> getOutputSelector(Integer vertexID) {
+		return outputSelectors.get(vertexID);
 	}
 
-	public Map<String, OperatorState<?>> getState(String vertexName) {
-		return operatorStates.get(vertexName);
+	public Map<String, OperatorState<?>> getState(Integer vertexID) {
+		return operatorStates.get(vertexID);
 	}
 
-	public Integer getIterationID(String vertexName) {
-		return iterationIds.get(vertexName);
+	public Integer getIterationID(Integer vertexID) {
+		return iterationIds.get(vertexID);
 	}
 
-	public long getIterationTimeout(String vertexName) {
-		return iterationTimeouts.get(vertexName);
+	public long getIterationTimeout(Integer vertexID) {
+		return iterationTimeouts.get(vertexID);
 	}
 
-	public String getOperatorName(String vertexName) {
-		return operatorNames.get(vertexName);
+	public String getOperatorName(Integer vertexID) {
+		return operatorNames.get(vertexID);
 	}
 
 	@Override
 	public String getStreamingPlanAsJSON() {
+
+		WindowingOptimzier.optimizeGraph(this);
 
 		try {
 			JSONObject json = new JSONObject();
 			JSONArray nodes = new JSONArray();
 
 			json.put("nodes", nodes);
+			List<Integer> operatorIDs = new ArrayList<Integer>(operatorNames.keySet());
+			Collections.sort(operatorIDs);
 
-			for (String id : operatorNames.keySet()) {
+			for (Integer id : operatorIDs) {
 				JSONObject node = new JSONObject();
 				nodes.put(node);
 
-				node.put("id", Integer.valueOf(id));
+				node.put("id", id);
 				node.put("type", getOperatorName(id));
 
 				if (sources.contains(id)) {
@@ -570,8 +636,13 @@ public class StreamGraph extends StreamingPlan {
 					node.put("pact", "Data Stream");
 				}
 
-				node.put("contents", getOperatorName(id) + " at "
-						+ getInvokable(id).getUserFunction().getClass().getSimpleName());
+				if (getInvokable(id) != null && getInvokable(id).getUserFunction() != null) {
+					node.put("contents", getOperatorName(id) + " at "
+							+ getInvokable(id).getUserFunction().getClass().getSimpleName());
+				} else {
+					node.put("contents", getOperatorName(id));
+				}
+
 				node.put("parallelism", getParallelism(id));
 
 				int numIn = getInEdges(id).size();
@@ -582,12 +653,12 @@ public class StreamGraph extends StreamingPlan {
 
 					for (int i = 0; i < numIn; i++) {
 
-						String inID = getInEdges(id).get(i);
+						Integer inID = getInEdges(id).get(i);
 
 						JSONObject input = new JSONObject();
 						inputs.put(input);
 
-						input.put("id", Integer.valueOf(inID));
+						input.put("id", inID);
 						input.put("ship_strategy", getOutPartitioner(inID, id).getStrategy());
 						if (i == 0) {
 							input.put("side", "first");

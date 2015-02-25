@@ -42,17 +42,6 @@ public final class ConfigConstants {
 	public static final String DEFAULT_EXECUTION_RETRIES_KEY = "execution-retries.default";
 	
 	// -------------------------------- Runtime -------------------------------
-
-	/**
-	 * The config parameter defining the storage directory to be used by the blob server.
-	 */
-	public static final String BLOB_STORAGE_DIRECTORY_KEY = "blob.storage.directory";
-
-	/**
-	 * The config parameter defining the cleanup interval of the library cache manager.
-	 */
-	public static final String LIBRARY_CACHE_MANAGER_CLEANUP_INTERVAL = "library-cache-manager" +
-			".cleanup.interval";
 	
 	/**
 	 * The config parameter defining the network address to connect to
@@ -65,18 +54,32 @@ public final class ConfigConstants {
 	 * for communication with the job manager.
 	 */
 	public static final String JOB_MANAGER_IPC_PORT_KEY = "jobmanager.rpc.port";
-	
-	/**
-	 * The config parameter defining the number of handler threads for the jobmanager RPC service.
-	 */
-	public static final String JOB_MANAGER_IPC_HANDLERS_KEY = "jobmanager.rpc.numhandler";
 
 	/**
-	 * The config parameter defining the number of seconds that a task manager heartbeat may be missing before it is
-	 * marked as failed.
+	 * The config parameter defining the storage directory to be used by the blob server.
 	 */
-	public static final String JOB_MANAGER_DEAD_TASKMANAGER_TIMEOUT_KEY = "jobmanager.max-heartbeat-delay-before-failure.msecs";
-	
+	public static final String BLOB_STORAGE_DIRECTORY_KEY = "blob.storage.directory";
+
+	/**
+	 * The config parameter defining number of retires for failed BLOB fetches.
+	 */
+	public static final String BLOB_FETCH_RETRIES_KEY = "blob.fetch.retries";
+
+	/**
+	 * The config parameter defining the maximum number of concurrent BLOB fetches that the JobManager serves.
+	 */
+	public static final String BLOB_FETCH_CONCURRENT_KEY = "blob.fetch.num-concurrent";
+
+	/**
+	 * The config parameter defining the backlog of BLOB fetches on the JobManager
+	 */
+	public static final String BLOB_FETCH_BACKLOG_KEY = "blob.fetch.backlog";
+
+	/**
+	 * The config parameter defining the cleanup interval of the library cache manager.
+	 */
+	public static final String LIBRARY_CACHE_MANAGER_CLEANUP_INTERVAL = "library-cache-manager.cleanup.interval";
+
 	/**
 	 * The config parameter defining the task manager's IPC port from the configuration.
 	 */
@@ -125,34 +128,6 @@ public final class ConfigConstants {
 	 * The config parameter defining the number of task slots of a task manager.
 	 */
 	public static final String TASK_MANAGER_NUM_TASK_SLOTS = "taskmanager.numberOfTaskSlots";
-
-	/**
-	 * The number of incoming network IO threads (e.g. incoming connection threads used in NettyConnectionManager
-	 * for the ServerBootstrap.)
-	 */
-	public static final String TASK_MANAGER_NET_NUM_IN_THREADS_KEY = "taskmanager.net.numInThreads";
-
-	/**
-	 * The number of outgoing network IO threads (e.g. outgoing connection threads used in NettyConnectionManager for
-	 * the Bootstrap.)
-	 */
-	public static final String TASK_MANAGER_NET_NUM_OUT_THREADS_KEY = "taskmanager.net.numOutThreads";
-
-	/**
-	 * The low water mark used in NettyConnectionManager for the Bootstrap.
-	 */
-	public static final String TASK_MANAGER_NET_NETTY_LOW_WATER_MARK = "taskmanager.net.nettyLowWaterMark";
-
-	/**
-	 * The high water mark used in NettyConnectionManager for the Bootstrap.
-	 */
-	public static final String TASK_MANAGER_NET_NETTY_HIGH_WATER_MARK = "taskmanager.net.nettyHighWaterMark";
-	
-	/**
-	 * Parameter for the interval in which the TaskManager sends the periodic heart beat messages
-	 * to the JobManager (in msecs).
-	 */
-	public static final String TASK_MANAGER_HEARTBEAT_INTERVAL_KEY = "taskmanager.heartbeat-interval";
 
 	/**
 	 * Flag indicating whether to start a thread, which repeatedly logs the memory usage of the JVM.
@@ -362,6 +337,11 @@ public final class ConfigConstants {
 	 * Timeout for all blocking calls
 	 */
 	public static final String AKKA_ASK_TIMEOUT = "akka.ask.timeout";
+
+	/**
+	 * Timeout for all blocking calls
+	 */
+	public static final String AKKA_LOOKUP_TIMEOUT = "akka.lookup.timeout";
 	
 	// ----------------------------- Miscellaneous ----------------------------
 	
@@ -399,18 +379,28 @@ public final class ConfigConstants {
 	 * The default network port to connect to for communication with the job manager.
 	 */
 	public static final int DEFAULT_JOB_MANAGER_IPC_PORT = 6123;
-
-	/**
-	 * The default number of handler threads for the jobmanager RPC service.
-	 */
-	public static final int DEFAULT_JOB_MANAGER_IPC_HANDLERS = 8;
 	
 	/**
 	 * Default number of seconds after which a task manager is marked as failed.
 	 */
 	// 30 seconds (its enough to get to mars, should be enough to detect failure)
 	public static final int DEFAULT_JOB_MANAGER_DEAD_TASKMANAGER_TIMEOUT = 30*1000;
-	
+
+	/**
+	 * Default number of retries for failed BLOB fetches.
+	 */
+	public static final int DEFAULT_BLOB_FETCH_RETRIES = 5;
+
+	/**
+	 * Default number of concurrent BLOB fetch operations.
+	 */
+	public static final int DEFAULT_BLOB_FETCH_CONCURRENT = 50;
+
+	/**
+	 * Default BLOB fetch connection backlog.
+	 */
+	public static final int DEFAULT_BLOB_FETCH_BACKLOG = 1000;
+
 	/**
 	 * The default network port the task manager expects incoming IPC connections. The {@code 0} means that
 	 * the TaskManager searches for a free port.
@@ -447,32 +437,6 @@ public final class ConfigConstants {
 	 * Default size of network stack buffers.
 	 */
 	public static final int DEFAULT_TASK_MANAGER_NETWORK_BUFFER_SIZE = 32768;
-
-	/**
-	 * Default number of incoming network IO threads (e.g. number of incoming connection threads used in
-	 * NettyConnectionManager for the ServerBootstrap). If set to -1, a reasonable default depending on the number of
-	 * cores will be picked.
-	 */
-	public static final int DEFAULT_TASK_MANAGER_NET_NUM_IN_THREADS = -1;
-
-	/**
-	 * Default number of outgoing network IO threads (e.g. number of outgoing connection threads used in
-	 * NettyConnectionManager for the Bootstrap). If set to -1, a reasonable default depending on the number of cores
-	 * will be picked.
-	 */
-	public static final int DEFAULT_TASK_MANAGER_NET_NUM_OUT_THREADS = -1;
-
-	/**
-	 * Default low water mark used in NettyConnectionManager for the Bootstrap. If set to -1, NettyConnectionManager
-	 * will use half of the network buffer size as the low water mark.
-	 */
-	public static final int DEFAULT_TASK_MANAGER_NET_NETTY_LOW_WATER_MARK = -1;
-
-	/**
-	 * Default high water mark used in NettyConnectionManager for the Bootstrap. If set to -1, NettyConnectionManager
-	 * will use the network buffer size as the high water mark.
-	 */
-	public static final int DEFAULT_TASK_MANAGER_NET_NETTY_HIGH_WATER_MARK = -1;
 
 	/**
 	 * Flag indicating whether to start a thread, which repeatedly logs the memory usage of the JVM.
@@ -604,6 +568,8 @@ public final class ConfigConstants {
 	public static String DEFAULT_AKKA_FRAMESIZE = "10485760b";
 
 	public static String DEFAULT_AKKA_ASK_TIMEOUT = "100 s";
+
+	public static String DEFAULT_AKKA_LOOKUP_TIMEOUT = "10 s";
 	
 
 	// ----------------------------- LocalExecution ----------------------------

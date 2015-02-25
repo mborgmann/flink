@@ -19,20 +19,16 @@
 package org.apache.flink.streaming.io;
 
 import org.apache.flink.core.io.IOReadableWritable;
-import org.apache.flink.runtime.io.network.api.reader.BufferReaderBase;
 import org.apache.flink.runtime.io.network.api.reader.MutableRecordReader;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 
 public class IndexedMutableReader<T extends IOReadableWritable> extends MutableRecordReader<T> {
 
-	BufferReaderBase reader;
+	InputGate reader;
 
-	public IndexedMutableReader(BufferReaderBase reader) {
+	public IndexedMutableReader(InputGate reader) {
 		super(reader);
 		this.reader = reader;
-	}
-
-	public int getLastChannelIndex() {
-		return reader.getChannelIndexOfLastBuffer();
 	}
 
 	public int getNumberOfInputChannels() {

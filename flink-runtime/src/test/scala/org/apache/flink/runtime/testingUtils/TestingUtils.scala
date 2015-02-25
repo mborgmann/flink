@@ -35,6 +35,7 @@ import scala.language.postfixOps
  * Convenience functions to test actor based components.
  */
 object TestingUtils {
+
   val testConfig = ConfigFactory.parseString(getDefaultTestingActorSystemConfigString)
 
   val TESTING_DURATION = 2 minute
@@ -48,23 +49,15 @@ object TestingUtils {
       |akka.test.timefactor = 10
       |akka.loggers = ["akka.event.slf4j.Slf4jLogger"]
       |akka.loglevel = $logLevel
-      |akka.stdout-loglevel = WARNING
+      |akka.stdout-loglevel = OFF
       |akka.jvm-exit-on-fata-error = off
       |akka.log-config-on-start = off
     """.stripMargin
   }
 
-  def startTestingTaskManagerWithConfiguration(hostname: String, jobManagerURL: String,
-                                               config: Configuration)
-                                              (implicit system: ActorSystem) = {
-    val (connectionInfo, _, taskManagerConfig, networkConnectionConfig) =
-      TaskManager.parseConfiguration(hostname, config,
-        localAkkaCommunication = true, localTaskManagerCommunication = false)
-    system.actorOf(Props(new TaskManager(connectionInfo, jobManagerURL, taskManagerConfig,
-      networkConnectionConfig) with TestingTaskManager))
-  }
+  def getDefaultTestingActorSystemConfig = testConfig
 
-  def startTestingJobManager(implicit system: ActorSystem): ActorRef = {
+  def startTestingJobManager(system: ActorSystem): ActorRef = {
     val config = new Configuration()
 
     val (instanceManager, scheduler, libraryCacheManager, _, accumulatorManager, _ ,
@@ -81,40 +74,38 @@ object TestingUtils {
     system.actorOf(jobManagerProps, JobManager.JOB_MANAGER_NAME)
   }
 
-  def startTestingTaskManager(jobManager: ActorRef)(implicit system: ActorSystem): ActorRef = {
+  def startTestingTaskManagerWithConfiguration(hostname: String,
+                                               jobManagerURL: String,
+                                               config: Configuration,
+                                               system: ActorSystem) = {
+
+    val (tmConfig, netConfig, connectionInfo, _) =
+      TaskManager.parseTaskManagerConfiguration(config, hostname, true, false)
+
+    val tmProps = Props(classOf[TestingTaskManager], connectionInfo,
+                        jobManagerURL, tmConfig, netConfig)
+    system.actorOf(tmProps)
+  }
+
+  def startTestingTaskManager(jobManager: ActorRef, system: ActorSystem): ActorRef = {
+
     val jmURL = jobManager.path.toString
     val config = new Configuration()
-    val (connectionInfo, _, taskManagerConfig, networkConnectionConfig) =
-      TaskManager.parseConfiguration("localhost", config,
-        localAkkaCommunication = true, localTaskManagerCommunication = true)
 
-    system.actorOf(Props(new TaskManager(connectionInfo, jmURL, taskManagerConfig,
-      networkConnectionConfig) with TestingTaskManager))
+    val (tmConfig, netConfig, connectionInfo, _) =
+      TaskManager.parseTaskManagerConfiguration(config,  "localhost", true, true)
+
+    val tmProps = Props(classOf[TestingTaskManager], connectionInfo, jmURL, tmConfig, netConfig)
+    system.actorOf(tmProps)
   }
 
   def startTestingCluster(numSlots: Int, numTMs: Int = 1,
-                          timeout: String = DEFAULT_AKKA_ASK_TIMEOUT):
-  TestingCluster = {
+                          timeout: String = DEFAULT_AKKA_ASK_TIMEOUT): TestingCluster = {
     val config = new Configuration()
     config.setInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, numSlots)
     config.setInteger(ConfigConstants.LOCAL_INSTANCE_MANAGER_NUMBER_TASK_MANAGER, numTMs)
-    config.setInteger(ConfigConstants.JOB_MANAGER_DEAD_TASKMANAGER_TIMEOUT_KEY, 1000)
     config.setString(ConfigConstants.AKKA_ASK_TIMEOUT, timeout)
     new TestingCluster(config)
-  }
-
-  def startTestingClusterDeathWatch(numSlots: Int, numTMs: Int,
-                                            timeout: String = DEFAULT_AKKA_ASK_TIMEOUT):
-  TestingCluster = {
-    val config = new Configuration()
-    config.setInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, numSlots)
-    config.setInteger(ConfigConstants.LOCAL_INSTANCE_MANAGER_NUMBER_TASK_MANAGER, numTMs)
-    config.setString(ConfigConstants.AKKA_ASK_TIMEOUT, timeout)
-    config.setString(ConfigConstants.AKKA_WATCH_HEARTBEAT_INTERVAL, "200 ms")
-    config.setString(ConfigConstants.AKKA_WATCH_HEARTBEAT_PAUSE, "50 ms")
-    config.setDouble(ConfigConstants.AKKA_WATCH_THRESHOLD, 1)
-
-    new TestingCluster(config, singleActorSystem = false)
   }
 
   def setGlobalExecutionContext(): Unit = {

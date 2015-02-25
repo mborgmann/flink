@@ -19,45 +19,56 @@
 package org.apache.flink.runtime.client
 
 import java.io.IOException
-import java.net.InetSocketAddress
+import java.net.{InetAddress, InetSocketAddress}
 
-import akka.actor.Status.Failure
+import akka.actor.Status.{Success, Failure}
 import akka.actor._
 import akka.pattern.{Patterns, ask}
 import org.apache.flink.api.common.JobExecutionResult
 import org.apache.flink.configuration.{ConfigConstants, Configuration}
 import org.apache.flink.runtime.ActorLogMessages
 import org.apache.flink.runtime.akka.AkkaUtils
-import org.apache.flink.runtime.jobgraph.JobGraph
+import org.apache.flink.runtime.jobgraph.{JobID, JobGraph}
 import org.apache.flink.runtime.jobmanager.JobManager
 import org.apache.flink.runtime.messages.JobClientMessages.{SubmitJobDetached, SubmitJobAndWait}
 import org.apache.flink.runtime.messages.JobManagerMessages._
 
 import scala.concurrent.{TimeoutException, Await}
 import scala.concurrent.duration.FiniteDuration
-import scala.util.Success
 
 /**
  * Actor which constitutes the bridge between the non-actor code and the JobManager. The JobClient
  * is used to submit jobs to the JobManager and to request the port of the BlobManager.
  *
- * @param jobManager ActorRef to jobmanager
+ * @param jobManager ActorRef to JobManager
  */
 class JobClient(jobManager: ActorRef) extends
 Actor with ActorLogMessages with ActorLogging {
 
   override def receiveWithLogMessages: Receive = {
     case SubmitJobDetached(jobGraph) =>
-      jobManager forward SubmitJob(jobGraph, registerForEvents = false, detached = true)
+      jobManager forward SubmitJob(jobGraph, registerForEvents = false)
+
     case cancelJob: CancelJob =>
       jobManager forward cancelJob
+
     case SubmitJobAndWait(jobGraph, listen) =>
       val listener = context.actorOf(Props(classOf[JobClientListener], sender))
-      jobManager.tell(SubmitJob(jobGraph, registerForEvents = listen, detached = false), listener)
+      jobManager.tell(SubmitJob(jobGraph, registerForEvents = listen), listener)
+
     case RequestBlobManagerPort =>
       jobManager forward RequestBlobManagerPort
+
     case RequestJobManagerStatus =>
       jobManager forward RequestJobManagerStatus
+  }
+
+  /**
+   * Handle unmatched messages with an exception.
+   */
+  override def unhandled(message: Any): Unit = {
+    // let the actor crash
+    throw new RuntimeException("Received unknown message " + message)
   }
 }
 
@@ -71,22 +82,27 @@ Actor with ActorLogMessages with ActorLogging {
 class JobClientListener(jobSubmitter: ActorRef) extends Actor with ActorLogMessages with
 ActorLogging {
   override def receiveWithLogMessages: Receive = {
-    case SubmissionFailure(_, t) =>
-      jobSubmitter ! Failure(t)
+    case failure: Failure =>
+      jobSubmitter ! failure
       self ! PoisonPill
-    case SubmissionSuccess(_) =>
+
+    case Success(_) =>
+
     case JobResultSuccess(_, duration, accumulatorResults) =>
       jobSubmitter ! new JobExecutionResult(duration, accumulatorResults)
       self ! PoisonPill
-    case JobResultCanceled(_, msg) =>
-      jobSubmitter ! Failure(new JobExecutionException(msg, true))
-      self ! PoisonPill
-    case JobResultFailed(_, msg) =>
-      jobSubmitter ! Failure(new JobExecutionException(msg, false))
-      self ! PoisonPill
+
     case msg =>
       // we have to use System.out.println here to avoid erroneous behavior for output redirection
       System.out.println(msg.toString)
+  }
+
+  /**
+   * Handle unmatched messages with an exception.
+   */
+  override def unhandled(message: Any): Unit = {
+    // let the actor crash
+    throw new RuntimeException("Received unknown message " + message)
   }
 }
 
@@ -94,38 +110,49 @@ ActorLogging {
  * JobClient's companion object containing convenience functions to start a JobClient actor, parse
  * the configuration to extract the JobClient's settings and convenience functions to submit jobs.
  */
-object JobClient{
+object JobClient {
+
   val JOB_CLIENT_NAME = "jobclient"
 
-  def startActorSystemAndActor(config: Configuration, localActorSystem: Boolean):
-  (ActorSystem, ActorRef) = {
-    // start a remote actor system to listen on an arbitrary port
-    implicit val actorSystem = AkkaUtils.createActorSystem(configuration = config,
-      listeningAddress = Some(("", 0)))
+  @throws(classOf[IOException])
+  def startActorSystemAndActor(config: Configuration,
+                               localActorSystem: Boolean): (ActorSystem, ActorRef) = {
 
-    (actorSystem, startActorWithConfiguration(config, localActorSystem))
+    // start a remote actor system to listen on an arbitrary port
+    val actorSystem = AkkaUtils.createActorSystem(configuration = config,
+                                                  listeningAddress = Some(("", 0)))
+    try {
+      val jobClientActor = createJobClientFromConfig(config, localActorSystem, actorSystem)
+      (actorSystem, jobClientActor)
+    }
+    catch {
+      case t: Throwable => {
+        actorSystem.shutdown()
+        throw t
+      }
+    }
   }
 
-  def startActor(jobManagerURL: String)(implicit actorSystem: ActorSystem, timeout: FiniteDuration):
-  ActorRef = {
-    val jobManagerFuture = AkkaUtils.getReference(jobManagerURL)(actorSystem, timeout)
+  @throws(classOf[IOException])
+  def createJobClientFromConfig(config: Configuration,
+                                localActorSystem: Boolean,
+                                actorSystem: ActorSystem): ActorRef = {
 
-    val jobManager = try {
-      Await.result(jobManagerFuture, timeout)
-    } catch {
-      case ex: Exception =>
-        throw new RuntimeException("Could not connect to JobManager at " + jobManagerURL + ".")
-    }
+    val jobManagerAddress = getJobManagerUrlFromConfig(config, localActorSystem)
+    createJobClient(jobManagerAddress, actorSystem, config)
+  }
+
+  @throws(classOf[IOException])
+  def createJobClient(jobManagerURL: String,
+                      actorSystem: ActorSystem,
+                      config: Configuration): ActorRef = {
+
+    val timeout = AkkaUtils.getLookupTimeout(config)
+    val jobManager = JobManager.getJobManagerRemoteReference(jobManagerURL, actorSystem, timeout)
 
     actorSystem.actorOf(Props(classOf[JobClient], jobManager), JOB_CLIENT_NAME)
   }
 
-  def startActorWithConfiguration(config: Configuration, localActorSystem: Boolean)
-                                 (implicit actorSystem: ActorSystem): ActorRef = {
-    implicit val timeout = AkkaUtils.getTimeout(config)
-
-    startActor(parseConfiguration(config, localActorSystem))
-  }
 
   /**
    * Extracts the JobManager's Akka URL from the configuration. If localActorSystem is true, then
@@ -137,22 +164,27 @@ object JobClient{
    *                          otherwise false
    * @return Akka URL of the JobManager
    */
-  def parseConfiguration(configuration: Configuration, localActorSystem: Boolean): String = {
-    if(localActorSystem){
+  def getJobManagerUrlFromConfig(configuration: Configuration,
+                                 localActorSystem: Boolean): String = {
+    if (localActorSystem) {
       // JobManager and JobClient run in the same ActorSystem
-      JobManager.getLocalAkkaURL
-    }else{
-      val jobManagerAddress = configuration.getString(ConfigConstants
-          .JOB_MANAGER_IPC_ADDRESS_KEY, null)
-      val jobManagerRPCPort = configuration.getInteger(ConfigConstants.JOB_MANAGER_IPC_PORT_KEY,
-          ConfigConstants.DEFAULT_JOB_MANAGER_IPC_PORT)
+      JobManager.getLocalJobManagerAkkaURL
+    } else {
+      val jobManagerAddress = configuration.getString(
+        ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, null)
+
+      val jobManagerRPCPort = configuration.getInteger(
+        ConfigConstants.JOB_MANAGER_IPC_PORT_KEY,
+        ConfigConstants.DEFAULT_JOB_MANAGER_IPC_PORT)
 
       if (jobManagerAddress == null) {
-        throw new RuntimeException("JobManager address has not been specified in the " +
-          "configuration.")
+        throw new RuntimeException(
+          "JobManager address has not been specified in the configuration.")
       }
 
-      JobManager.getRemoteAkkaURL(jobManagerAddress + ":" + jobManagerRPCPort)
+      val hostPort = new InetSocketAddress(InetAddress.getByName(jobManagerAddress),
+                                           jobManagerRPCPort)
+      JobManager.getRemoteJobManagerAkkaURL(hostPort)
     }
   }
 
@@ -167,7 +199,8 @@ object JobClient{
    *                             corresponding job, otherwise false
    * @param jobClient ActorRef to the JobClient
    * @param timeout Timeout for futures
-   * @throws org.apache.flink.runtime.client.JobExecutionException
+   * @throws org.apache.flink.runtime.client.JobExecutionException Thrown if the job
+   *                                                               execution fails.
    * @return The job execution result
    */
   @throws(classOf[JobExecutionException])
@@ -177,10 +210,10 @@ object JobClient{
     var waitForAnswer = true
     var answer: JobExecutionResult = null
 
-    val result =(jobClient ? SubmitJobAndWait(jobGraph, listenToEvents = listenToStatusEvents))(
+    val result = (jobClient ? SubmitJobAndWait(jobGraph, listenToEvents = listenToStatusEvents))(
       AkkaUtils.INF_TIMEOUT).mapTo[JobExecutionResult]
 
-    while(waitForAnswer) {
+    while (waitForAnswer) {
       try {
         answer = Await.result(result, timeout)
         waitForAnswer = false
@@ -192,8 +225,8 @@ object JobClient{
             Await.result(jmStatus, timeout)
           } catch {
             case t: Throwable =>
-              throw new JobExecutionException("JobManager not reachable anymore. Terminate " +
-                "waiting for job answer.", false)
+              throw new JobTimeoutException(jobGraph.getJobID, "Lost connection to " +
+                "job manager.", t)
           }
       }
     }
@@ -204,19 +237,26 @@ object JobClient{
   /**
    * Submits a job in detached mode. The method sends the corresponding [[JobGraph]] to the
    * JobClient specified by jobClient. The JobClient does not start a [[JobClientListener]] and
-   * simply returns the [[SubmissionResponse]] of the [[JobManager]]. The SubmissionResponse is
-   * then returned by this method.
+   * simply returns a possible failure on the [[JobManager]].
    *
    * @param jobGraph Flink job
    * @param jobClient ActorRef to the JobClient
    * @param timeout Tiemout for futures
    * @return The submission response
    */
+  @throws(classOf[JobExecutionException])
   def submitJobDetached(jobGraph: JobGraph, jobClient: ActorRef)(implicit timeout: FiniteDuration):
-  SubmissionResponse = {
+  Unit = {
+
     val response = (jobClient ? SubmitJobDetached(jobGraph))(timeout)
 
-    Await.result(response.mapTo[SubmissionResponse],timeout)
+    try {
+      Await.result(response, timeout)
+    } catch {
+      case timeout: TimeoutException =>
+        throw new JobTimeoutException(jobGraph.getJobID,
+          "Timeout while waiting for the submission result.", timeout);
+    }
   }
 
   /**
@@ -228,23 +268,24 @@ object JobClient{
    * @param hostname Hostname of the instance on which the BlobServer and also the JobManager run
    * @param jobClient ActorRef to the JobClient
    * @param timeout Timeout for futures
-   * @throws IOException
-   * @return
+   * @throws IOException Thrown, if the file upload to the JobManager failed.
    */
   @throws(classOf[IOException])
-  def uploadJarFiles(jobGraph: JobGraph, hostname: String, jobClient: ActorRef)(implicit timeout:
-   FiniteDuration): Unit = {
+  def uploadJarFiles(jobGraph: JobGraph, hostname: String, jobClient: ActorRef)(
+    implicit timeout: FiniteDuration): Unit = {
 
-    val futureBlobPort = Patterns.ask(jobClient, RequestBlobManagerPort, timeout).mapTo[Int]
+    if (jobGraph.hasUsercodeJarFiles()) {
+      val futureBlobPort = Patterns.ask(jobClient, RequestBlobManagerPort, timeout).mapTo[Int]
 
-    val port = try {
-      Await.result(futureBlobPort, timeout)
-    } catch {
-      case e:Exception => throw new IOException("Could not retrieve the server's blob port.", e)
+      val port = try {
+        Await.result(futureBlobPort, timeout)
+      } catch {
+        case e: Exception => throw new IOException("Could not retrieve the server's blob port.", e)
+      }
+
+      val serverAddress = new InetSocketAddress(hostname, port)
+
+      jobGraph.uploadRequiredJarFiles(serverAddress)
     }
-
-    val serverAddress = new InetSocketAddress(hostname, port)
-
-    jobGraph.uploadRequiredJarFiles(serverAddress)
   }
 }

@@ -187,6 +187,8 @@ public class IntermediateResultPartition implements BufferPoolOwner {
 
 	public void releaseAllResources() throws IOException {
 		synchronized (queues) {
+			LOG.debug("Release all resources of {}.", this);
+
 			if (!isReleased) {
 				try {
 					for (IntermediateResultPartitionQueue queue : queues) {
@@ -213,7 +215,8 @@ public class IntermediateResultPartition implements BufferPoolOwner {
 	// Consume
 	// ------------------------------------------------------------------------
 
-	public IntermediateResultPartitionQueueIterator getQueueIterator(int queueIndex, Optional<BufferProvider> bufferProvider) throws IOException {
+	public IntermediateResultPartitionQueueIterator getQueueIterator(int queueIndex, Optional<BufferProvider> bufferProvider)
+			throws IOException {
 		synchronized (queues) {
 			if (isReleased) {
 				throw new IllegalQueueIteratorRequestException("Intermediate result partition has already been released.");
@@ -228,11 +231,6 @@ public class IntermediateResultPartition implements BufferPoolOwner {
 	}
 
 	// ------------------------------------------------------------------------
-
-	@Override
-	public String toString() {
-		return "Intermediate result partition " + partitionId + " [num queues: " + queues.length + ", " + (isFinished ? "finished" : "not finished") + "]";
-	}
 
 	private void checkInProducePhase() {
 		checkState(!isReleased, "Partition has already been discarded.");
@@ -296,7 +294,8 @@ public class IntermediateResultPartition implements BufferPoolOwner {
 
 	// ------------------------------------------------------------------------
 
-	public static IntermediateResultPartition create(RuntimeEnvironment environment, int partitionIndex, JobID jobId, ExecutionAttemptID executionId, NetworkEnvironment networkEnvironment, PartitionDeploymentDescriptor desc) {
+	public static IntermediateResultPartition create(RuntimeEnvironment environment, int partitionIndex, JobID jobId,
+			ExecutionAttemptID executionId, NetworkEnvironment networkEnvironment, PartitionDeploymentDescriptor desc) {
 		final IntermediateResultPartitionID partitionId = checkNotNull(desc.getPartitionId());
 		final IntermediateResultPartitionType partitionType = checkNotNull(desc.getPartitionType());
 
@@ -307,6 +306,14 @@ public class IntermediateResultPartition implements BufferPoolOwner {
 			partitionQueues[i] = new PipelinedPartitionQueue();
 		}
 
-		return new IntermediateResultPartition(environment, partitionIndex, jobId, executionId, partitionId, partitionType, partitionQueues, networkEnvironment);
+		return new IntermediateResultPartition(environment, partitionIndex, jobId, executionId, partitionId, partitionType,
+				partitionQueues, networkEnvironment);
+	}
+
+	@Override
+	public String toString() {
+		return String.format("IntermediateResultPartition(JobID: %s, ExecutionID: %s, " +
+				"PartitionID: %s, PartitionType: %s, [num queues: %d, (isFinished: %b)",
+				jobId, producerExecutionId, partitionId, partitionType, queues.length, isFinished);
 	}
 }

@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.net.URL;
 
 import akka.actor.ActorRef;
+import org.apache.flink.runtime.akka.AkkaUtils;
 import org.eclipse.jetty.server.handler.ResourceHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,13 +78,15 @@ public class WebInfoServer {
 	 * @throws IOException
 	 *         Thrown, if the server setup failed for an I/O related reason.
 	 */
-	public WebInfoServer(Configuration config, ActorRef jobmanager,
-						ActorRef archive, FiniteDuration timeout) throws IOException {
-		
-		// if no explicit configuration is given, use the global configuration
+	public WebInfoServer(Configuration config, ActorRef jobmanager, ActorRef archive) throws IOException {
 		if (config == null) {
 			throw new IllegalArgumentException("No Configuration has been passed to the web server");
 		}
+		if (jobmanager == null || archive == null) {
+			throw new NullPointerException();
+		}
+
+		final FiniteDuration timeout = AkkaUtils.getTimeout(config);
 		
 		this.port = config.getInteger(ConfigConstants.JOB_MANAGER_WEB_PORT_KEY,
 				ConfigConstants.DEFAULT_JOB_MANAGER_WEB_FRONTEND_PORT);
@@ -110,13 +113,10 @@ public class WebInfoServer {
 			LOG.info("Setting up web info server, using web-root directory" +
 					webRootDir.toExternalForm()	+ ".");
 
-			LOG.info("Web info server will display information about flink job-manager on "
-				+ config.getString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, null) + ", port "
-				+ port
-				+ ".");
 		}
 
 		server = new Server(port);
+
 
 		// ----- the handlers for the servlets -----
 		ServletContextHandler servletContext = new ServletContextHandler(ServletContextHandler.SESSIONS);
@@ -186,8 +186,8 @@ public class WebInfoServer {
 	 *         Thrown, if the start fails.
 	 */
 	public void start() throws Exception {
-		LOG.info("Starting web info server for JobManager on port " + this.port);
 		server.start();
+		LOG.info("Started web info server for JobManager on {}:{}",server.getConnectors()[0].getHost(), this.port);
 	}
 
 	/**
