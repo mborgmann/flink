@@ -20,10 +20,7 @@
 package org.apache.flink.examples.java.array.util;
 
 
-import java.io.DataInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
@@ -33,83 +30,111 @@ import java.util.List;
 
 public class BandSequentialFile {
 
+	final String directory = "/media/moritz/flink/Data/";
+
 	// Metadata
-	private int numberOfBands = 6;
-	private int path;
-	private int row;
-	private int numberOfSamples = 8002;         // TODO Get dynamically
-	private int numberOfLines = 7232;           // TODO Get dynamically
+	private int numberOfBands;
+	private int numberOfSamples;
+	private int numberOfLines;
 	private String fileName;
 
-	// Actual Data
-	private short[][] bsqAsShortArray;
-
+	// Data
+	private List[] bands;
 
 	public BandSequentialFile(String fileName) throws IOException {
-		System.out.println("Start reading File: " + fileName);
+		System.out.println(fileName + " - Start Reading");
 
-		// TODO Calc Fileparams
+		// Get Fileparams
 		this.fileName = fileName;
-		// TODO this.path = ;
-		// TODO this.row = ;
+
+		// Check for hdr file and load params
+		File hdrFile = new File(this.directory + this.fileName + ".hdr");
+		FileReader fileReader = new FileReader(hdrFile);
+		BufferedReader bufferedReader = new BufferedReader(fileReader);
+		String line;
+		while ((line = bufferedReader.readLine()) != null) {
+
+			if (line.startsWith("samples")) {
+				this.numberOfSamples = Integer.parseInt(line.replaceAll("[\\D]", ""));
+				System.out.println(fileName + " - Samples: " + this.numberOfSamples);
+			}
+
+			if (line.startsWith("lines")) {
+				this.numberOfLines = Integer.parseInt(line.replaceAll("[\\D]", ""));
+				System.out.println(fileName + " - Lines: " + this.numberOfLines);
+			}
+
+			if (line.startsWith("bands")) {
+				this.numberOfBands = Integer.parseInt(line.replaceAll("[\\D]", ""));
+				System.out.println(fileName + " - Bands: " + this.numberOfBands);
+			}
+
+			// TODO Bandnames could be important
+
+		}
+		fileReader.close();
+
+		this.bands = new List[this.numberOfBands];
 
 		// Open Stream
-		File file = new File(this.fileName);
+		File file = new File(this.directory + this.fileName + ".bsq");
 
 		int pixelsPerBand = (int)file.length() / this.numberOfBands / 2;
-		System.out.println("Pixel per Band: " + pixelsPerBand);
-
-		createShortArray(pixelsPerBand, this.numberOfBands);
-
-		System.out.println(this.bsqAsShortArray[2][48000000]);
 
 		readDataToObject(file);
 
-
-		System.out.println("Finished reading File: " + file);
+		System.out.println(this.fileName + " - FINISHED");
 	}
 
-	public List<Line> bandToLineList(int bandNumber) {
+	public List<Line> getBandAsLines(int bandNumber) {
+		return this.bands[bandNumber];
+	}
 
-		System.out.println("Preparing Lines from: " + bandNumber);
+	public List<Line> getBsqAsLines() {
+		List<Line> lines = new ArrayList<Line>(this.numberOfBands * this.numberOfLines);
 
-		List<Line> lines = new ArrayList<Line>(this.numberOfLines);
-
-		for (int i = 0; i < 3000; i++) {
-			int from = i * this.numberOfSamples;
-			int to = from + numberOfSamples; // final index, exclusive
-			short[] lineData = Arrays.copyOfRange(this.bsqAsShortArray[bandNumber], from, to);
-			Line newLine = new Line(this.path, this.row, bandNumber, i, lineData);
-			lines.add(newLine);
+		for (int i = 0; i < 2; i++) {
+			lines.addAll(this.bands[i]);
 		}
-
-		System.out.println("Created Lines: " + lines.size());
 
 		return lines;
 	}
 
+	private List<Line> shortArrayToLineList(short[] shortArray, int bandNumber) {
 
+		List<Line> lines = new ArrayList<Line>(this.numberOfLines);
 
-	private void createShortArray(int pixelsPerBand, int numberOfBands) {
-		this.bsqAsShortArray = new short[numberOfBands][pixelsPerBand];
+		for (int i = 0; i < this.numberOfLines; i++) {
+			int from = i * this.numberOfSamples;
+			int to = from + this.numberOfSamples; // final index, exclusive
+			short[] lineData = Arrays.copyOfRange(shortArray, from, to);
+			Line newLine = new Line(this.fileName, bandNumber, i, lineData);
+			lines.add(newLine);
+		}
+
+		return lines;
+
 	}
 
 	private void readDataToObject(File file) throws IOException {
 		DataInputStream dis = new DataInputStream(new FileInputStream(file));
 
-		for (int i = 0; i < this.bsqAsShortArray.length; i++) {
-
-			System.out.println("Reading Band: " + i);
-			byte[] currentBand = new byte[this.bsqAsShortArray[i].length * 2];
+		for (int i = 0; i < this.numberOfBands; i++) {
+			System.out.println(this.fileName + " - Reading Band " + (i+1));
+			byte[] currentBand = new byte[this.numberOfLines * this.numberOfSamples * 2];
 
 			dis.readFully(currentBand, 0, currentBand.length);
 
+			short[] bandAsShorts = new short[this.numberOfLines * this.numberOfSamples];
+
 			ShortBuffer shortBuffer =
 					ByteBuffer.wrap(currentBand).order(ByteOrder.LITTLE_ENDIAN).
-							asShortBuffer().get(bsqAsShortArray[i]);
-		}
+							asShortBuffer().get(bandAsShorts);
 
+			this.bands[i] = shortArrayToLineList(bandAsShorts, i);
+		}
 		dis.close();
+
 	}
 
 }

@@ -23,19 +23,22 @@ import java.io.Serializable;
 public class Line implements Serializable {
 
 	short[] lineData;
+	String fileName;
 	int band;
 	int path;
 	int row;
 	int lineNumber;
 
-	public Line(int path, int row, int band, int lineNumber, short[] lineData) {
-		this.path = path;
-		this.row = row;
+	public Line(String fileName, int band, int lineNumber, short[] lineData) {
 		this.band = band;
 		this.lineNumber = lineNumber;
 		this.lineData = lineData;
+		this.fileName = fileName;
 	}
 
+	public String getFileName() { return this.fileName; }
+
+	public int getBand() { return this.band; }
 
 	public short[] getLineData() {
 		return lineData;

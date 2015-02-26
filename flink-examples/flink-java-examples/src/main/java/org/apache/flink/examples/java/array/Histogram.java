@@ -24,20 +24,20 @@ import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.examples.java.array.util.BandSequentialFile;
 import org.apache.flink.examples.java.array.util.Line;
 import org.apache.flink.util.Collector;
 
 import java.util.Date;
+import java.util.List;
 
 public class Histogram {
 
-	static int bands = 6;
-	static int samples = 8002;
-	static int lines   = 7232;
-	static String fileToProcess = "/media/moritz/flink/Data/227064_000202_BLA_SR.bsq";
-	static String outputPath = "/home/moritz/Projekte/Studienarbeit/Flink/result";
+	static String bsqFileToProcess = "227064_000202_BLA_SR";
+	static String outputPath = "/home/moritz/Projekte/Studienarbeit/Flink/result.csv";
 
 
 	public static void main(String[] args) throws Exception {
@@ -47,47 +47,67 @@ public class Histogram {
 
 
 		// Reading a file
-		BandSequentialFile band = new BandSequentialFile(fileToProcess);
+		BandSequentialFile bsq = new BandSequentialFile(bsqFileToProcess);
+		// List<Line> bsqAsLines = bsq.getBandAsLines(3);
+		List<Line> bsqAsLines = bsq.getBsqAsLines();
+		System.out.println("Number of Lines to process: " + bsqAsLines.size());
 
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 
-		DataSet<Line> lines = env.fromCollection(band.bandToLineList(0));
+		DataSet<Line> lines = env.fromCollection(bsqAsLines);
 
-		DataSet<Tuple2<Short, Integer>> counts =
+		DataSet<Tuple4<String, Integer, Integer, Integer>> counts =
 				lines
-						.flatMap(new Tokenizer())
-						.groupBy(0)
-						.sum(1);
+						.flatMap(new Counter())
+						.groupBy(0, 1, 2)
+						.sum(3);
 
-		counts.writeAsCsv(outputPath, "\n", " ", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
+		counts.writeAsCsv(outputPath, "\n", "\t", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
 		// counts.print();
 
 
 		// execute program
-		env.execute("Histogram");
+		// env.execute("Histogram");
 
 		System.out.println("Consumed Time: " + ((System.currentTimeMillis() - startTime) / 1000));
 		System.out.println("Finished Histogram " + new Date());
 	}
 
-	public static final class Tokenizer implements FlatMapFunction<Line, Tuple2<Short, Integer>> {
+	public static final class Counter implements FlatMapFunction<Line, Tuple4<String, Integer, Integer, Integer>> {
+
+		int bucketSize = 25;
 
 		@Override
-		public void flatMap(Line value, Collector<Tuple2<Short, Integer>> out) throws Exception {
+		public void flatMap(Line value, Collector<Tuple4<String, Integer, Integer, Integer>> out) throws Exception {
 
 			for (short pixel : value.getLineData()) {
 				if (pixel == -9999) {
 					continue;
 				}
 				if (pixel < 0) {
-					out.collect(new Tuple2<Short, Integer>((short)0, 1));
+					out.collect(new Tuple4<String, Integer, Integer, Integer>(
+							value.getFileName(),
+							value.getBand(),
+							valueToBucket(0),
+							1));
 					continue;
 				}
 				if (pixel > 10000) {
 					continue;
 				}
-				out.collect(new Tuple2<Short, Integer>(pixel, 1));
+				out.collect(new Tuple4<String, Integer, Integer, Integer>(
+						value.getFileName(),
+						value.getBand(),
+						valueToBucket(pixel),
+						1));
 			}
+		}
+
+		private int valueToBucket(int value) {
+
+			int bucketNumber = value / bucketSize;
+			return (bucketNumber * bucketSize);
+
 		}
 	}
 
