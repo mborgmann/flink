@@ -21,18 +21,20 @@
 package org.apache.flink.examples.java.array;
 
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.tuple.Tuple4;
+import org.apache.flink.api.java.tuple.Tuple8;
 import org.apache.flink.core.fs.FileSystem;
-import org.apache.flink.examples.java.array.util.BandSequentialFile;
+import org.apache.flink.examples.java.array.util.BsqReader;
 import org.apache.flink.examples.java.array.util.Line;
 import org.apache.flink.util.Collector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Date;
-import java.util.List;
 
 public class Histogram {
 
@@ -45,34 +47,110 @@ public class Histogram {
 		System.out.println("Starting Histogram: " + new Date());
 		long startTime = System.currentTimeMillis();
 
-
-		// Reading a file
-		BandSequentialFile bsq = new BandSequentialFile(bsqFileToProcess);
-		// List<Line> bsqAsLines = bsq.getBandAsLines(3);
-		List<Line> bsqAsLines = bsq.getBsqAsLines();
-		System.out.println("Number of Lines to process: " + bsqAsLines.size());
-
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 
-		DataSet<Line> lines = env.fromCollection(bsqAsLines);
+		//DataSet<Line> lines = env.fromCollection(bsqAsLines);
+		DataSet<Line> lines = env.readFile(new BsqReader(), "/media/moritz/flink/Data/227064_000202_BLA_SR.bsq");
 
+		// Filename, Band, Bucket, PixelsPerBucket
 		DataSet<Tuple4<String, Integer, Integer, Integer>> counts =
 				lines
 						.flatMap(new Counter())
 						.groupBy(0, 1, 2)
 						.sum(3);
 
-		counts.writeAsCsv(outputPath, "\n", "\t", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
+		// Filename, Bucket, Band1, Band2, Band3, Band4, Band5, Band6
+		DataSet<Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output =
+				counts
+						.map(new ToCSVMapper())
+						.groupBy(0, 1)
+						.reduce(new ToCSVReducer());
+
+		output.writeAsCsv(outputPath, "\n", "\t", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
 		// counts.print();
 
 
 		// execute program
-		// env.execute("Histogram");
+		env.execute("Histogram");
 
 		System.out.println("Consumed Time: " + ((System.currentTimeMillis() - startTime) / 1000));
 		System.out.println("Finished Histogram " + new Date());
 	}
 
+
+	public static final class ToCSVReducer implements ReduceFunction<Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> {
+
+		private static final Logger LOG = LoggerFactory.getLogger(ToCSVReducer.class);
+
+		@Override
+		public Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer> reduce(Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer> value1, Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer> value2) throws Exception {
+
+			// Due to grouping, fileName und bucket should be the same
+
+			String fileName;
+			int bucket;
+
+			int[] values = new int[6];
+
+			if (value1.f0 != value2.f0) LOG.error("Found inequal filenames: " + value1.f0 + " - " + value2.f0);
+			fileName = value1.f0;
+			if (value1.f1 != value2.f1) LOG.error("Found inequal buckets: " + value1.f1 + " - " + value2.f1);
+			bucket = value1.f1;
+			values[0] = value1.f2 > 0 ? value1.f2 : value2.f2;
+			values[1] = value1.f3 > 0 ? value1.f3 : value2.f3;
+			values[2] = value1.f4 > 0 ? value1.f4 : value2.f4;
+			values[3] = value1.f5 > 0 ? value1.f5 : value2.f5;
+			values[4] = value1.f6 > 0 ? value1.f6 : value2.f6;
+			values[5] = value1.f7 > 0 ? value1.f7 : value2.f7;
+
+			return new Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>(
+					fileName,
+					bucket,
+					values[0],
+					values[1],
+					values[2],
+					values[3],
+					values[4],
+					values[5]
+			);
+		}
+	}
+
+	/**
+	 * Gets realy messy with all those tuples
+	 */
+	public static final class ToCSVMapper implements MapFunction<Tuple4<String, Integer, Integer, Integer>, Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> {
+
+		@Override
+		public Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer> map(Tuple4<String, Integer, Integer, Integer> value) throws Exception {
+
+			// Band, Bucket, band1, band2, band3, band4, band5, band6
+			Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer> out
+					= new Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>(
+					(String) value.getField(0),
+					(Integer) value.getField(2),
+					0,
+					0,
+					0,
+					0,
+					0,
+					0
+			);
+
+			out.setField(value.getField(3), (Integer)value.getField(1)+2);
+
+			return out;
+		}
+
+	}
+
+
+
+
+	/**
+	 * Maps all pixelvalues of a band to the corresponding buckets
+	 * Created Tuples are Filename, Band, Bucket, PixelsInBucket
+	 */
 	public static final class Counter implements FlatMapFunction<Line, Tuple4<String, Integer, Integer, Integer>> {
 
 		int bucketSize = 25;

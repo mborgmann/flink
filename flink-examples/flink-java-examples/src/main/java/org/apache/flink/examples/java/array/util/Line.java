@@ -29,6 +29,8 @@ public class Line implements Serializable {
 	int row;
 	int lineNumber;
 
+	public Line() {}
+
 	public Line(String fileName, int band, int lineNumber, short[] lineData) {
 		this.band = band;
 		this.lineNumber = lineNumber;
