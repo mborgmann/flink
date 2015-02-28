@@ -92,9 +92,9 @@ public class Histogram {
 
 			int[] values = new int[6];
 
-			if (value1.f0 != value2.f0) LOG.error("Found inequal filenames: " + value1.f0 + " - " + value2.f0);
+			if (!value1.f0.equals(value2.f0)) LOG.error("Found inequal filenames: " + value1.f0 + " - " + value2.f0);
 			fileName = value1.f0;
-			if (value1.f1 != value2.f1) LOG.error("Found inequal buckets: " + value1.f1 + " - " + value2.f1);
+			if (!value1.f1.equals(value2.f1)) LOG.error("Found inequal buckets: " + value1.f1 + " - " + value2.f1);
 			bucket = value1.f1;
 			values[0] = value1.f2 > 0 ? value1.f2 : value2.f2;
 			values[1] = value1.f3 > 0 ? value1.f3 : value2.f3;

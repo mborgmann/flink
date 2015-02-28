@@ -1,9 +1,7 @@
 package org.apache.flink.examples.java.array.util;
 
 import org.apache.flink.api.common.io.FileInputFormat;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FileStatus;
-import org.apache.flink.core.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,42 +16,21 @@ public class BsqReader extends FileInputFormat<Line> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(BsqReader.class);
 
-	protected static final String DEFLATE_SUFFIX = ".bsq";
+	private boolean hdrLoaded = false;
+	private boolean splitDataProcessed = false;
+
 	private int numberOfSamples;
 	private int numberOfLines;
 	private int numberOfBands;
 
-	private int currentBand = 0;
-	private int currentLineOfBand = 0;
-
-	public void setFilePath(String filePath) {
-		// Do parent stuff
-		super.setFilePath(filePath);
-
-		// Load HDR Data
-		this.loadHDRData();
-	}
-
-	public void setFilePath(Path filePath) {
-		// Do parent stuff
-		super.setFilePath(filePath);
-
-		// Load HDR Data
-		this.loadHDRData();
-	}
-
-
-	public void configure(Configuration parameters) {
-		super.configure(parameters);
-
-		// This way we get each band in a split
-		// ATTENTION: This assumes there are always six band per file
-		this.numSplits = 6;
-	}
-
+	private int currentPixel;
+	private int lastPixelToRead;
 
 	private void loadHDRData() {
-		// throw new IllegalArgumentException("File path may not be null.");
+
+		if (this.hdrLoaded) {
+			return;
+		}
 
 		String hdrFilePath = this.filePath.toString().replace(".bsq", ".hdr");
 
@@ -84,24 +61,115 @@ public class BsqReader extends FileInputFormat<Line> {
 			}
 			fileReader.close();
 		} catch (IOException e) {
-			throw new IllegalArgumentException("HDR File could not be found.");
+			throw new IllegalArgumentException("HDR File could not be found. File: " + this.filePath.getName());
 		}
 
+		this.hdrLoaded = true;
 	}
+
+
+	private void loadSplitData() {
+		// When reading first pixel no values are set yet
+		if (!this.splitDataProcessed) {
+			this.currentPixel = (int)(this.splitStart / 2);
+			this.lastPixelToRead = (int)((this.splitStart + this.splitLength) / 2) - 1;
+
+			LOG.info("First Position: " + this.getCurrentBand() + " - " + this.getCurrentLine());
+
+			this.splitDataProcessed = true;
+		}
+	}
+
+	/**
+	 * @param bandNumber The band number
+	 * @param lineNumber The line corresponding to the band
+	 * @return The absolut pixel in bsq
+	 */
+	private int getLastPixelInLine(int bandNumber, int lineNumber) {
+		return getFirstPixelOfBand(bandNumber) + ((lineNumber+1) * this.numberOfSamples) - 1;
+	}
+
+	// verifiziert
+	private int getBandNumberInFile(int pixel) {
+		return pixel / (this.numberOfLines * this.numberOfSamples);
+	}
+
+	/**
+	 * @param bandNumber The band number
+	 * @param pixel The absolut pixel
+	 * @return which line the pixel is in, corresponding to the band
+	 */
+	private int getLineNumberInBand(int bandNumber, int pixel) {
+		int positionInBand = pixel - this.getFirstPixelOfBand(bandNumber);
+		return positionInBand / this.numberOfSamples;
+	}
+
+	// verifiziert
+	private int getFirstPixelOfBand(int bandNumber) {
+		return bandNumber * this.numberOfLines * this.numberOfSamples;
+	}
+
+	private int getFirstPixelOfLineInBand(int bandNumber, int lineNumber) {
+		return getFirstPixelOfBand(bandNumber) + lineNumber * this.numberOfSamples;
+	}
+
+	/**
+	 * @return The first pixel that should be read into the current line
+	 */
+	private int getCurrentLineStart() {
+
+		int currentBand = this.getBandNumberInFile(this.currentPixel);
+		int currentLine = this.getLineNumberInBand(currentBand, this.currentPixel);
+
+		int firstPixelOfLine = this.getFirstPixelOfLineInBand(currentBand, currentLine);
+
+		return this.currentPixel > firstPixelOfLine ? this.currentPixel : firstPixelOfLine;
+	}
+
+	/**
+	 * @return The last pixel that should be read into the current line
+	 */
+	private int getCurrentLineEnd() {
+		int lastPixel = this.getLastPixelInLine(
+				this.getCurrentBand(),
+				this.getLineNumberInBand(this.getCurrentBand(), this.currentPixel));
+
+		return lastPixel < this.lastPixelToRead ? lastPixel : this.lastPixelToRead;
+	}
+
+	/**
+	 * @return The current band that the current line belongs to
+	 */
+	private int getCurrentBand() {
+		return this.getBandNumberInFile(this.currentPixel);
+	}
+
+	/**
+	 * @return The current line relative to band
+	 */
+	private int getCurrentLine() {
+		return this.getLineNumberInBand(this.getCurrentBand(), this.currentPixel);
+	}
+
+
+
 
 	protected boolean acceptFile(FileStatus fileStatus) {
 		final String name = fileStatus.getPath().getName();
-		return !name.startsWith("_") && !name.startsWith(".") && name.endsWith(DEFLATE_SUFFIX);
+		return !name.startsWith("_") && !name.startsWith(".") && name.endsWith(".bsq");
 	}
 
 
 	@Override
 	public boolean reachedEnd() throws IOException {
 
-		if (this.currentLineOfBand >= this.numberOfLines) {
-			LOG.info("Loading " + this.filePath.getName() + " - Finished Band: " + this.currentBand);
+		this.loadHDRData();
+		this.loadSplitData();
+
+		if (this.currentPixel > this.lastPixelToRead) {
+			LOG.info("Finished read this Input. Last Position: " + this.getCurrentBand() + " - " + this.getCurrentLine());
 			return true;
-		}
+		};
 
 		return false;
 	}
@@ -109,21 +177,30 @@ public class BsqReader extends FileInputFormat<Line> {
 	@Override
 	public Line nextRecord(Line reuse) throws IOException {
 
-		this.currentBand = getBandNumber();
+		// Check for hdrData
+		this.loadHDRData();
+		this.loadSplitData();
 
-		// Last Line of Band reached
-		if (this.currentLineOfBand >= this.numberOfLines) {
-			LOG.info("Loading " + this.filePath.getName() + " - Finished Band: " + this.currentBand);
+		// Collect params for line
+		int startingPixel = this.getCurrentLineStart();
+		int endingPixel = this.getCurrentLineEnd();
+		int bandNumber = this.getCurrentBand();
+		int lineNumber = this.getCurrentLine();
+		String fileName = this.filePath.getName();
+		int pixelsToRead = endingPixel - startingPixel + 1;
 
+		if (pixelsToRead < 1) {
+			LOG.error("No Pixels to read! Last Position: " + this.getCurrentBand() + " - " + this.getCurrentLine());
 			return null;
 		}
 
-		short[] lineData = new short[this.numberOfSamples];
-		byte[]	lineDataAsBytes = new byte[lineData.length*2];
+		short[] lineData = new short[pixelsToRead];
 
-		if (this.currentLineOfBand % 100 == 0) {
-			LOG.info("Loading " + this.filePath.getName() + " - Band: " + this.currentBand +
-					" - Line: " + this.currentLineOfBand + " / " + this.numberOfLines);
+		byte[] lineDataAsBytes = new byte[lineData.length*2];
+
+		if (lineNumber % 100 == 0) {
+			LOG.info("Loading " + fileName + " - Band: " + bandNumber +
+					" - Line: " + lineNumber + " / " + this.numberOfLines);
 		}
 
 		this.stream.read(lineDataAsBytes);
@@ -133,18 +210,15 @@ public class BsqReader extends FileInputFormat<Line> {
 
 		// Create Line
 		reuse = new Line(
-				this.filePath.getName(),
-				this.currentBand,
-				this.currentLineOfBand,
+				fileName,
+				bandNumber,
+				lineNumber,
 				lineData);
 
+		// Set Pointer to next Pixel that was not processed
+		this.currentPixel = endingPixel + 1;
 
-		// Set Pointer to next Line
-		this.currentLineOfBand++;
 		return reuse;
 	}
 
-	private int getBandNumber() {
-		return (int) (this.splitStart / this.splitLength);
-	}
 }
