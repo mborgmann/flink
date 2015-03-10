@@ -25,6 +25,7 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.api.java.operators.DataSink;
 import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.api.java.tuple.Tuple8;
 import org.apache.flink.core.fs.FileSystem;
@@ -34,23 +35,26 @@ import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Date;
-
 public class Histogram {
-
-	static String bsqFileToProcess = "227064_000202_BLA_SR";
-	static String outputPath = "/home/moritz/Projekte/Studienarbeit/Flink/result.csv";
-
 
 	public static void main(String[] args) throws Exception {
 
-		System.out.println("Starting Histogram: " + new Date());
+		String inputPath;
+		String outputPath;
+
+		if (args.length == 2) {
+			inputPath = args[0];
+			outputPath = args[1];
+		} else {
+			System.err.println("Usage: WordCount <text path> <result path>");
+			return;
+		}
+
 		long startTime = System.currentTimeMillis();
 
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 
-		//DataSet<Line> lines = env.fromCollection(bsqAsLines);
-		DataSet<Line> lines = env.readFile(new BsqReader(), "/media/moritz/flink/Data/227064_000202_BLA_SR.bsq");
+		DataSet<Line> lines = env.readFile(new BsqReader(), inputPath);
 
 		// Filename, Band, Bucket, PixelsPerBucket
 		DataSet<Tuple4<String, Integer, Integer, Integer>> counts =
@@ -60,24 +64,23 @@ public class Histogram {
 						.sum(3);
 
 		// Filename, Bucket, Band1, Band2, Band3, Band4, Band5, Band6
-		DataSet<Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output =
+		/*DataSet<Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output =
 				counts
 						.map(new ToCSVMapper())
 						.groupBy(0, 1)
 						.reduce(new ToCSVReducer());
-
-		output.writeAsCsv(outputPath, "\n", "\t", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
-		// counts.print();
-
+*/
+		counts.writeAsCsv(outputPath, "\n", "\t", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
 
 		// execute program
 		env.execute("Histogram");
-
 		System.out.println("Consumed Time: " + ((System.currentTimeMillis() - startTime) / 1000));
-		System.out.println("Finished Histogram " + new Date());
 	}
 
 
+	/**
+	 * Merges all records of the same bucket and sourcefile
+	 */
 	public static final class ToCSVReducer implements ReduceFunction<Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> {
 
 		private static final Logger LOG = LoggerFactory.getLogger(ToCSVReducer.class);
@@ -117,7 +120,7 @@ public class Histogram {
 	}
 
 	/**
-	 * Gets realy messy with all those tuples
+	 * Maps the band-information to a single column per band (static to 6 bands)
 	 */
 	public static final class ToCSVMapper implements MapFunction<Tuple4<String, Integer, Integer, Integer>, Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> {
 
@@ -145,8 +148,6 @@ public class Histogram {
 	}
 
 
-
-
 	/**
 	 * Maps all pixelvalues of a band to the corresponding buckets
 	 * Created Tuples are Filename, Band, Bucket, PixelsInBucket
@@ -163,11 +164,14 @@ public class Histogram {
 					continue;
 				}
 				if (pixel < 0) {
+					// Not sure if this could be really applied to the given data
+					/*
 					out.collect(new Tuple4<String, Integer, Integer, Integer>(
 							value.getFileName(),
 							value.getBand(),
 							valueToBucket(0),
 							1));
+					*/
 					continue;
 				}
 				if (pixel > 10000) {
