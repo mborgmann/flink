@@ -64,13 +64,13 @@ public class Histogram {
 						.sum(3);
 
 		// Filename, Bucket, Band1, Band2, Band3, Band4, Band5, Band6
-		/*DataSet<Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output =
+		DataSet<Tuple8<String, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> output =
 				counts
 						.map(new ToCSVMapper())
 						.groupBy(0, 1)
 						.reduce(new ToCSVReducer());
-*/
-		counts.writeAsCsv(outputPath, "\n", "\t", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
+
+		output.writeAsCsv(outputPath, "\n", "\t", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
 
 		// execute program
 		env.execute("Histogram");

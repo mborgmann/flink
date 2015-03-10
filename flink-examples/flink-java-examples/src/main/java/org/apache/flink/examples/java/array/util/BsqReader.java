@@ -82,6 +82,21 @@ public class BsqReader extends FileInputFormat<Line> {
 
 
 	private void loadSplitData() {
+
+		/**
+		 * TODO This is just a workaround
+		 *
+		 * Determining if we are starting in the middle of byte, if so, we skip half a pixel
+		 */
+		if (this.splitStart % 2 != 0) {
+			this.splitStart++;
+			try {
+				this.stream.seek(this.splitStart);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
 		// When reading first pixel no values are set yet
 		this.currentPixel = (int)(this.splitStart / 2);
 		this.lastPixelToRead = (int)((this.splitStart + this.splitLength) / 2) - 1;
@@ -197,6 +212,7 @@ public class BsqReader extends FileInputFormat<Line> {
 	@Override
 	public Line nextRecord(Line reuse) throws IOException {
 
+
 		// Collect params for line
 		int startingPixel = this.getCurrentLineStart();
 		int endingPixel = this.getCurrentLineEnd();
@@ -205,17 +221,13 @@ public class BsqReader extends FileInputFormat<Line> {
 		String fileName = this.bsqFileName.toString();
 		int pixelsToRead = endingPixel - startingPixel + 1;
 
-		if (bandNumber != 0) {
-			this.currentPixel = endingPixel + 1;
-			return null;
-		}
-
 		if (pixelsToRead < 1) {
 			LOG.error(this.splitNumber + "No Pixels to read! Start Position: " + this.startingBand + " - " + this.startingLine);
 			LOG.error(this.splitNumber + "No Pixels to read! Last Position: " + this.getCurrentBand() + " - " + this.getCurrentLine());
 			this.currentPixel = endingPixel + 1;
 			return null;
 		}
+
 
 		short[] lineData = new short[pixelsToRead];
 
