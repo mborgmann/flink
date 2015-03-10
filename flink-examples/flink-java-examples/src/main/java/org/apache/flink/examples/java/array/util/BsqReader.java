@@ -1,24 +1,27 @@
 package org.apache.flink.examples.java.array.util;
 
 import org.apache.flink.api.common.io.FileInputFormat;
+import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FileInputSplit;
 import org.apache.flink.core.fs.FileStatus;
+import org.apache.flink.core.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 public class BsqReader extends FileInputFormat<Line> {
 
-	private static final Logger LOG = LoggerFactory.getLogger(BsqReader.class);
+	private Logger LOG = LoggerFactory.getLogger(BsqReader.class);
 
 	private boolean hdrLoaded = false;
 	private boolean splitDataProcessed = false;
+	private int splitNumber;
+
+	private int startingLine;						// Debugging
+	private int startingBand;						// Debugging
 
 	private String bsqFileName;
 	private int numberOfSamples;
@@ -28,46 +31,47 @@ public class BsqReader extends FileInputFormat<Line> {
 	private int currentPixel;
 	private int lastPixelToRead;
 
-	private boolean loadHDRData() {
+	private boolean loadHDRData() throws IOException {
 
-		if (this.hdrLoaded) {
-			return true;
+		if (!this.bsqFileName.toString().endsWith(".bsq")) {
+			throw new IOException("Not an bsq File: " + this.bsqFileName.toString());
 		}
 
-		if (!this.bsqFileName.endsWith(".bsq")) {
-			LOG.error("File seems not to be an bsq: " + this.bsqFileName);
-			LOG.error("Splitstart: " + this.splitStart + " - Splitlength: " + this.splitLength);
-			return false;
+		Path hdrFilePath;
+		if (this.filePath.toString().endsWith(".bsq")) {
+			// Case single file to process
+			hdrFilePath = new Path(this.filePath.toString().replace(".bsq", ".hdr"));
+		} else {
+			// Case Directory to process
+			hdrFilePath = new Path(this.filePath + "/" + this.bsqFileName.replace(".bsq", ".hdr"));
 		}
 
-		String hdrFilePath = this.filePath + "/" + this.bsqFileName.replace(".bsq", ".hdr");
+		System.out.println("Input " + this.splitNumber + " - Processing hdr-File: " + hdrFilePath.toString());
 
 		try {
-			File hdrFile = new File(hdrFilePath);
-			FileReader fileReader = new FileReader(hdrFile);
-			BufferedReader bufferedReader = new BufferedReader(fileReader);
+
+			BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(hdrFilePath.getFileSystem().open(hdrFilePath)));
+
 			String line;
 			while ((line = bufferedReader.readLine()) != null) {
 
 				if (line.startsWith("samples")) {
 					this.numberOfSamples = Integer.parseInt(line.replaceAll("[\\D]", ""));
-					LOG.info("Loading " + this.bsqFileName + " - Samples: " + this.numberOfSamples);
+					System.out.println(this.splitNumber + " - Loading " + this.bsqFileName + " - Samples: " + this.numberOfSamples);
 				}
 
 				if (line.startsWith("lines")) {
 					this.numberOfLines = Integer.parseInt(line.replaceAll("[\\D]", ""));
-					LOG.info("Loading " + this.bsqFileName + " - Lines: " + this.numberOfLines);
+					System.out.println(this.splitNumber + " - Loading " + this.bsqFileName + " - Lines: " + this.numberOfLines);
 				}
 
 				if (line.startsWith("bands")) {
 					this.numberOfBands = Integer.parseInt(line.replaceAll("[\\D]", ""));
-					LOG.info("Loading " + this.bsqFileName + " - Bands: " + this.numberOfBands);
+					System.out.println(this.splitNumber + " - Loading " + this.bsqFileName + " - Bands: " + this.numberOfBands);
 				}
 
-				// TODO Bandnames could be important
-
 			}
-			fileReader.close();
+			bufferedReader.close();
 		} catch (IOException e) {
 			throw new IllegalArgumentException("HDR File could not be found. File: " + hdrFilePath);
 		}
@@ -79,14 +83,15 @@ public class BsqReader extends FileInputFormat<Line> {
 
 	private void loadSplitData() {
 		// When reading first pixel no values are set yet
-		if (!this.splitDataProcessed) {
-			this.currentPixel = (int)(this.splitStart / 2);
-			this.lastPixelToRead = (int)((this.splitStart + this.splitLength) / 2) - 1;
+		this.currentPixel = (int)(this.splitStart / 2);
+		this.lastPixelToRead = (int)((this.splitStart + this.splitLength) / 2) - 1;
 
-			LOG.info("First Position: " + this.getCurrentBand() + " - " + this.getCurrentLine());
+		// Debugging
+		System.out.println(this.splitNumber + " - First Position: " + this.getCurrentBand() + " - " + this.getCurrentLine());
+		this.startingBand = this.getCurrentBand();
+		this.startingLine = this.getCurrentLine();
 
-			this.splitDataProcessed = true;
-		}
+		this.splitDataProcessed = true;
 	}
 
 	/**
@@ -178,11 +183,11 @@ public class BsqReader extends FileInputFormat<Line> {
 	@Override
 	public boolean reachedEnd() throws IOException {
 
-		if (!this.loadHDRData()) return true;
-		this.loadSplitData();
-
 		if (this.currentPixel > this.lastPixelToRead) {
-			LOG.info("Finished read this Input. Last Position: " + this.getCurrentBand() + " - " + this.getCurrentLine());
+			LOG.error("Finished Input: " + this.splitNumber + " - From File: " + this.bsqFileName.toString() + " - Stream Start-Length: " + this.splitStart + " - " + this.splitLength);
+			LOG.error("Finished Input: " + this.splitNumber + " - From File: " + this.bsqFileName.toString() + " - Current Pixel - Last Pixel: " + this.currentPixel + " - " + this.lastPixelToRead);
+			LOG.error("Finished Input: " + this.splitNumber + " - From File: " + this.bsqFileName.toString() + " - First Position: " + this.startingBand + " - " + this.startingLine);
+			LOG.error("Finished Input: " + this.splitNumber + " - From File: " + this.bsqFileName.toString() + " - Last Position: " + this.getCurrentBand() + " - " + this.getCurrentLine());
 			return true;
 		};
 
@@ -192,20 +197,23 @@ public class BsqReader extends FileInputFormat<Line> {
 	@Override
 	public Line nextRecord(Line reuse) throws IOException {
 
-		// Check for hdrData
-		this.loadHDRData();
-		this.loadSplitData();
-
 		// Collect params for line
 		int startingPixel = this.getCurrentLineStart();
 		int endingPixel = this.getCurrentLineEnd();
 		int bandNumber = this.getCurrentBand();
 		int lineNumber = this.getCurrentLine();
-		String fileName = this.bsqFileName;
+		String fileName = this.bsqFileName.toString();
 		int pixelsToRead = endingPixel - startingPixel + 1;
 
+		if (bandNumber != 0) {
+			this.currentPixel = endingPixel + 1;
+			return null;
+		}
+
 		if (pixelsToRead < 1) {
-			LOG.error("No Pixels to read! Last Position: " + this.getCurrentBand() + " - " + this.getCurrentLine());
+			LOG.error(this.splitNumber + "No Pixels to read! Start Position: " + this.startingBand + " - " + this.startingLine);
+			LOG.error(this.splitNumber + "No Pixels to read! Last Position: " + this.getCurrentBand() + " - " + this.getCurrentLine());
+			this.currentPixel = endingPixel + 1;
 			return null;
 		}
 
@@ -214,9 +222,9 @@ public class BsqReader extends FileInputFormat<Line> {
 		byte[] lineDataAsBytes = new byte[lineData.length*2];
 
 		if (lineNumber % 100 == 0) {
-			LOG.info("Loading " + fileName + " - Band: " + bandNumber +
-					" - Line: " + lineNumber + " / " + this.numberOfLines +
-					" - Percent Done: " + this.getPercentageDone());
+			LOG.info(this.splitNumber + " " + String.format("%.2f", this.getPercentageDone()) + " "
+					+ fileName + " - Band: " + bandNumber +
+					" - Line: " + lineNumber + " / " + this.numberOfLines);
 		}
 
 		this.stream.read(lineDataAsBytes);
@@ -240,7 +248,15 @@ public class BsqReader extends FileInputFormat<Line> {
 
 	public void open(FileInputSplit fileSplit) throws IOException {
 		super.open(fileSplit);
+
 		this.bsqFileName = fileSplit.getPath().getName();
+		System.out.println("|||||||||||| Opening input split " + fileSplit.getPath() + " - " + fileSplit.getSplitNumber() + " [" + this.splitStart + "," + this.splitLength + "]");
+
+		this.splitNumber = fileSplit.getSplitNumber();
+
+		// Check for hdrData
+		this.loadHDRData();
+		this.loadSplitData();
 	}
 
 }
